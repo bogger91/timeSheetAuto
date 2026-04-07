@@ -1,0 +1,6 @@
+config.env
+data/
+*.msg
+__pycache__/
+*.pyc
+.env
