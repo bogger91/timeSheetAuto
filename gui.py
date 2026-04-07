@@ -147,14 +147,26 @@ class App(tk.Tk):
 
         threading.Thread(target=task, daemon=True).start()
 
+    def _validate_file(self) -> bool:
+        path = self.file_var.get().strip()
+        if not path:
+            messagebox.showwarning("Файл не выбран", "Выберите Excel-файл через кнопку «Обзор…»")
+            return False
+        if not os.path.exists(path):
+            messagebox.showerror("Файл не найден", f"Файл не найден:\n{path}")
+            return False
+        return True
+
     def _run_preview(self):
+        if not self._validate_file():
+            return
         self._save_config()
 
         def do():
             import importlib, config, parser as rpt
             importlib.reload(config)
             importlib.reload(rpt)
-            pivot = rpt.load_pivot(self.file_var.get() or None)
+            pivot = rpt.load_pivot(self.file_var.get())
             print("\n=== Сводная таблица ===")
             print(pivot.to_string(index=False))
             print()
@@ -162,6 +174,8 @@ class App(tk.Tk):
         self._run(do)
 
     def _run_draft(self):
+        if not self._validate_file():
+            return
         self._save_config()
 
         def do():
@@ -169,13 +183,15 @@ class App(tk.Tk):
             importlib.reload(config)
             importlib.reload(rpt)
             importlib.reload(mailer)
-            pivot = rpt.load_pivot(self.file_var.get() or None)
+            pivot = rpt.load_pivot(self.file_var.get())
             table_html = rpt.pivot_to_html(pivot)
             mailer.create_draft(table_html)
 
         self._run(do)
 
     def _run_send(self):
+        if not self._validate_file():
+            return
         if not messagebox.askyesno("Подтверждение", "Отправить письмо всем получателям?"):
             return
         self._save_config()
@@ -185,7 +201,7 @@ class App(tk.Tk):
             importlib.reload(config)
             importlib.reload(rpt)
             importlib.reload(mailer)
-            pivot = rpt.load_pivot(self.file_var.get() or None)
+            pivot = rpt.load_pivot(self.file_var.get())
             table_html = rpt.pivot_to_html(pivot)
             mailer.send(table_html)
 
