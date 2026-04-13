@@ -49,7 +49,11 @@ class App(tk.Tk):
         mail_frame.grid(row=1, column=0, columnspan=2, sticky="ew", **pad)
 
         self.mail_var = tk.StringVar()
-        ttk.Entry(mail_frame, textvariable=self.mail_var, width=65).grid(row=0, column=0, padx=5, pady=5)
+        ttk.Entry(mail_frame, textvariable=self.mail_var, width=50).grid(row=0, column=0, padx=5, pady=5)
+        ttk.Button(mail_frame, text="Загрузить из AD",
+                   command=self._load_from_ad, width=18).grid(row=0, column=1, padx=5)
+        ttk.Button(mail_frame, text="Проверить AD",
+                   command=self._test_ad, width=14).grid(row=0, column=2, padx=5)
 
         # --- Кнопки ---
         btn_frame = ttk.Frame(self)
@@ -146,6 +150,36 @@ class App(tk.Tk):
                 sys.stderr = sys.__stderr__
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _test_ad(self):
+        def do():
+            import importlib, config, ad_fetcher
+            importlib.reload(config)
+            importlib.reload(ad_fetcher)
+            print("\n=== Проверка подключения к AD ===")
+            result = ad_fetcher.test_connection()
+            print(result)
+            print()
+
+        self._run(do)
+
+    def _load_from_ad(self):
+        def do():
+            import importlib, config, ad_fetcher
+            importlib.reload(config)
+            importlib.reload(ad_fetcher)
+            print("\n=== Загрузка тим-лидов из AD ===")
+            emails = ad_fetcher.get_teamlead_emails()
+            if not emails:
+                print("[!] Никого не найдено. Проверьте AD_SEARCH_BY и маску в config.env.")
+                return
+            joined = ",".join(emails)
+            self.mail_var.set(joined)
+            self._save_config()
+            print(f"\nНайдено: {len(emails)} адрес(ов). Поле получателей обновлено.")
+            print()
+
+        self._run(do)
 
     def _validate_file(self) -> bool:
         path = self.file_var.get().strip()
