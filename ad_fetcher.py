@@ -2,19 +2,30 @@
 Получение email-адресов тим-лидов из Active Directory через LDAP.
 
 Поддерживаемые режимы аутентификации:
-  - NTLM (Windows integrated auth) — пароль не нужен, работает под доменным аккаунтом
-  - Simple bind — логин + пароль из config.env
+  - NTLM  (AD_USE_NTLM=true)  — шифрование встроено, пароль в config.env
+  - LDAPS (AD_SERVER=ldaps://…) — TLS-соединение на порту 636
+  - Simple bind — только если сервер явно разрешает (редко в корпоративной среде)
 
 Поддерживаемые режимы поиска:
   - AD_SEARCH_BY=title  — по полю должности (title)
   - AD_SEARCH_BY=group  — по членству в группе AD
 """
+import ssl
 import config
-from ldap3 import Server, Connection, ALL, SUBTREE, NTLM
+from ldap3 import Server, Connection, ALL, SUBTREE, NTLM, Tls
 
 
 def _connect() -> Connection:
-    server = Server(config.AD_SERVER, get_info=ALL, connect_timeout=10)
+    use_ldaps = config.AD_SERVER.lower().startswith("ldaps://")
+
+    if use_ldaps:
+        # LDAPS: TLS с отключённой проверкой сертификата (корпоративный самоподписанный)
+        tls = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT)
+        tls.check_hostname = False
+        server = Server(config.AD_SERVER, use_ssl=True, tls=tls,
+                        get_info=ALL, connect_timeout=10)
+    else:
+        server = Server(config.AD_SERVER, get_info=ALL, connect_timeout=10)
 
     if config.AD_USE_NTLM:
         conn = Connection(
@@ -41,7 +52,6 @@ def get_teamlead_emails() -> list[str]:
     Поднимает исключение при ошибке подключения или поиска.
     """
     conn = _connect()
-
     search_filter = _build_filter()
 
     conn.search(
@@ -81,7 +91,6 @@ def _build_filter() -> str:
             raise ValueError("AD_GROUP_DN не задан в config.env (нужен при AD_SEARCH_BY=group)")
         return f"(&{base}(memberOf={group_dn}))"
 
-    # По умолчанию — поиск по должности (title)
     title_mask = config.AD_TITLE_MASK or "*"
     return f"(&{base}(title={title_mask}))"
 
@@ -94,4 +103,12 @@ def test_connection() -> str:
         conn.unbind()
         return f"Подключение успешно. Аккаунт: {who}"
     except Exception as e:
-        return f"Ошибка подключения: {e}"
+        hint = ""
+        msg = str(e).lower()
+        if "strongeraruthrequired" in msg or "strongerauthrequired" in msg:
+            hint = (
+                "\n\nСервер требует шифрования. Попробуйте одно из:\n"
+                "  1. AD_USE_NTLM=true в config.env\n"
+                "  2. Сменить AD_SERVER=ldaps://dc01.company.ru (порт 636)"
+            )
+        return f"Ошибка подключения: {e}{hint}"
