@@ -24,6 +24,9 @@ AD_USER = get("AD_USER")              # DOMAIN\svc_reports  или  svc_reports@
 AD_PASSWORD = get("AD_PASSWORD")
 AD_USE_NTLM = get("AD_USE_NTLM", "false").lower() == "true"
 
+# Фильтр по департаменту (поле department в AD); пусто — без фильтра
+AD_DEPARTMENT = get("AD_DEPARTMENT")
+
 # Режим поиска: "title" (по должности) или "group" (по группе AD)
 AD_SEARCH_BY = get("AD_SEARCH_BY", "title")
 AD_TITLE_MASK = get("AD_TITLE_MASK", "*Lead*")   # маска для поиска по title

@@ -83,16 +83,24 @@ def get_teamlead_emails() -> list[str]:
 
 
 def _build_filter() -> str:
-    base = "(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2))"  # активные юзеры
+    parts = [
+        "(objectClass=user)",
+        "(!(userAccountControl:1.2.840.113556.1.4.803:=2))",  # только активные
+    ]
+
+    if config.AD_DEPARTMENT:
+        parts.append(f"(department={config.AD_DEPARTMENT})")
 
     if config.AD_SEARCH_BY == "group":
         group_dn = config.AD_GROUP_DN
         if not group_dn:
             raise ValueError("AD_GROUP_DN не задан в config.env (нужен при AD_SEARCH_BY=group)")
-        return f"(&{base}(memberOf={group_dn}))"
+        parts.append(f"(memberOf={group_dn})")
+    else:
+        title_mask = config.AD_TITLE_MASK or "*"
+        parts.append(f"(title={title_mask})")
 
-    title_mask = config.AD_TITLE_MASK or "*"
-    return f"(&{base}(title={title_mask}))"
+    return "(&" + "".join(parts) + ")"
 
 
 def test_connection() -> str:
