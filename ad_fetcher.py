@@ -107,8 +107,15 @@ def test_connection() -> str:
         msg = str(e).lower()
         if "strongeraruthrequired" in msg or "strongerauthrequired" in msg:
             hint = (
-                "\n\nСервер требует шифрования. Попробуйте одно из:\n"
-                "  1. AD_USE_NTLM=true в config.env\n"
-                "  2. Сменить AD_SERVER=ldaps://dc01.company.ru (порт 636)"
+                "\n\nСервер требует шифрования. Попробуйте:\n"
+                "  AD_SERVER=ldaps://ваш-dc.company.ru\n"
+                "  AD_USE_NTLM=false"
+            )
+        elif "md4" in msg or "unsupported hash" in msg:
+            hint = (
+                "\n\nNTLM не работает: OpenSSL 3.0 отключил MD4.\n"
+                "Переключитесь на LDAPS в config.env:\n"
+                "  AD_SERVER=ldaps://ваш-dc.company.ru\n"
+                "  AD_USE_NTLM=false"
             )
         return f"Ошибка подключения: {e}{hint}"
