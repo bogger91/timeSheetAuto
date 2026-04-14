@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Данные — TimeSheet Auto{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <h5 class="mb-0 fw-semibold">Сводная таблица списания</h5>
+
+  <!-- Загрузка файла -->
+  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data"
+        class="d-flex align-items-center gap-2">
+    <input type="file" name="excel_file" accept=".xlsx,.xls"
+           class="form-control form-control-sm" style="max-width:280px;" required>
+    <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">
+      &#128196; Загрузить Excel
+    </button>
+  </form>
+</div>
+
+{% if error %}
+  <div class="alert alert-danger alert-dismissible fade show" role="alert">
+    {{ error }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+{% endif %}
+
+{% if pivot is not none %}
+
+  <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+    {% if filename %}
+      <span class="badge bg-secondary">&#128196; {{ filename }}</span>
+    {% endif %}
+
+    <!-- Фильтр по подразделению -->
+    <div class="d-flex align-items-center gap-2">
+      <label class="small text-muted text-nowrap mb-0">Подразделение:</label>
+      <select id="dept-filter" class="form-select form-select-sm" style="max-width:260px;">
+        <option value="">— все —</option>
+        {% for dept in departments %}
+          <option value="{{ dept }}">{{ dept }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <a href="{{ url_for('recipients') }}" class="btn btn-sm btn-success ms-auto">
+      &#9993; Перейти к рассылке &rarr;
+    </a>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle mb-0" id="pivot-table">
+      <thead class="table-primary">
+        <tr>
+          <th>Подразделение</th>
+          <th class="text-end">Capacity, ч</th>
+          <th class="text-end">Потрачено, ч</th>
+          <th class="text-end">% списания</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for _, row in pivot.iterrows() %}
+          {% set is_total = row['Подразделение']|upper == 'ИТОГО' %}
+          {% set pct = row['% списания'] %}
+          <tr class="{{ 'table-secondary fw-bold' if is_total else '' }}"
+              data-dept="{{ row['Подразделение'] }}">
+            <td>{{ row['Подразделение'] }}</td>
+            <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
+            <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
+            <td class="text-end fw-semibold
+              {% if not is_total %}
+                {% if pct < 80 %}text-danger
+                {% elif pct < 95 %}text-warning-emphasis
+                {% else %}text-success{% endif %}
+              {% endif %}">
+              {{ "%.1f"|format(pct) }}%
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+{% else %}
+  <div class="text-center text-muted py-5">
+    <div style="font-size:3rem;">&#128196;</div>
+    <p class="mt-2">Загрузите Excel-выгрузку из FineBI, чтобы увидеть отчёт.</p>
+  </div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const filter = document.getElementById('dept-filter');
+  if (!filter) return;
+
+  filter.addEventListener('change', function () {
+    const val = this.value;
+    document.querySelectorAll('#pivot-table tbody tr').forEach(function (row) {
+      const dept = row.dataset.dept || '';
+      const isTotal = dept.toUpperCase() === 'ИТОГО';
+      if (isTotal) { row.style.display = ''; return; }
+      row.style.display = (!val || dept === val) ? '' : 'none';
+    });
+  });
+})();
+</script>
+{% endblock %}

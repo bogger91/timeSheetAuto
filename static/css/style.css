@@ -1,0 +1,66 @@
+/* ===========================
+   TimeSheet Auto — custom CSS
+   Bootstrap 5 base, minimal overrides
+   =========================== */
+
+body {
+  background-color: #f8f9fa;
+  font-size: 0.9rem;
+}
+
+/* Navbar */
+.navbar-brand {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+/* Cards */
+.card {
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+.card-header {
+  background-color: #f1f3f5;
+  border-bottom: 1px solid #dee2e6;
+}
+
+/* Table */
+#pivot-table th {
+  white-space: nowrap;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+#pivot-table td,
+#pivot-table th {
+  vertical-align: middle;
+}
+
+/* Percentage colours already handled by Bootstrap text-* classes in template,
+   but keep a slightly bolder weight for readability */
+.text-danger   { font-weight: 600; }
+.text-success  { font-weight: 600; }
+.text-warning-emphasis { font-weight: 600; }
+
+/* Login page */
+.card .card-header.text-uppercase {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+/* Recipients list */
+#recipients-list .list-group-item:hover {
+  background-color: #f8f9fa;
+}
+
+/* Monospace inputs / textareas */
+.font-monospace {
+  font-size: 0.82rem;
+}
+
+/* Send summary */
+#send-summary .alert {
+  font-size: 0.9rem;
+}

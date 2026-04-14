@@ -9,49 +9,61 @@
 Поддерживаемые режимы поиска:
   - AD_SEARCH_BY=title  — по полю должности (title)
   - AD_SEARCH_BY=group  — по членству в группе AD
+
+Функции принимают необязательные параметры server/user/password,
+которые перекрывают значения из config.env. Это позволяет Flask-приложению
+передавать учётные данные из сессии без изменения конфигурационного файла.
 """
 import ssl
 import config
 from ldap3 import Server, Connection, ALL, SUBTREE, NTLM, Tls
 
 
-def _connect() -> Connection:
-    use_ldaps = config.AD_SERVER.lower().startswith("ldaps://")
+def _connect(server: str = None, user: str = None,
+             password: str = None, use_ntlm: bool = None) -> Connection:
+    server_url = server or config.AD_SERVER
+    ad_user    = user     or config.AD_USER
+    ad_pass    = password or config.AD_PASSWORD
+    ntlm_flag  = use_ntlm if use_ntlm is not None else config.AD_USE_NTLM
+
+    use_ldaps = server_url.lower().startswith("ldaps://")
 
     if use_ldaps:
         # LDAPS: TLS с отключённой проверкой сертификата (корпоративный самоподписанный)
         tls = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT)
         tls.check_hostname = False
-        server = Server(config.AD_SERVER, use_ssl=True, tls=tls,
-                        get_info=ALL, connect_timeout=10)
+        srv = Server(server_url, use_ssl=True, tls=tls,
+                     get_info=ALL, connect_timeout=10)
     else:
-        server = Server(config.AD_SERVER, get_info=ALL, connect_timeout=10)
+        srv = Server(server_url, get_info=ALL, connect_timeout=10)
 
-    if config.AD_USE_NTLM:
+    if ntlm_flag:
         conn = Connection(
-            server,
-            user=config.AD_USER,
-            password=config.AD_PASSWORD,
+            srv,
+            user=ad_user,
+            password=ad_pass,
             authentication=NTLM,
             auto_bind=True,
         )
     else:
         conn = Connection(
-            server,
-            user=config.AD_USER,
-            password=config.AD_PASSWORD,
+            srv,
+            user=ad_user,
+            password=ad_pass,
             auto_bind=True,
         )
 
     return conn
 
 
-def get_teamlead_emails() -> list[str]:
+def get_teamlead_emails(server: str = None, user: str = None,
+                        password: str = None) -> list[str]:
     """
     Возвращает список email-адресов тим-лидов из AD.
+    Параметры server/user/password перекрывают значения из config.env.
     Поднимает исключение при ошибке подключения или поиска.
     """
-    conn = _connect()
+    conn = _connect(server=server, user=user, password=password)
     search_filter = _build_filter()
 
     conn.search(
@@ -103,10 +115,11 @@ def _build_filter() -> str:
     return "(&" + "".join(parts) + ")"
 
 
-def test_connection() -> str:
+def test_connection(server: str = None, user: str = None,
+                   password: str = None) -> str:
     """Проверка подключения к AD. Возвращает строку с результатом."""
     try:
-        conn = _connect()
+        conn = _connect(server=server, user=user, password=password)
         who = conn.extend.standard.who_am_i()
         conn.unbind()
         return f"Подключение успешно. Аккаунт: {who}"

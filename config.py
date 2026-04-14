@@ -17,6 +17,10 @@ MAIL_SUBJECT = get("MAIL_SUBJECT", "Отчёт по списанию часов 
 MAIL_TO = [a.strip() for a in get("MAIL_TO").split(",") if a.strip()]
 MAIL_CC = [a.strip() for a in get("MAIL_CC").split(",") if a.strip()]
 
+# SMTP (для Flask-версии)
+SMTP_HOST = get("SMTP_HOST", "")
+SMTP_PORT = int(get("SMTP_PORT", "587"))
+
 # Active Directory
 AD_SERVER = get("AD_SERVER")          # ldap://dc01.company.ru
 AD_BASE_DN = get("AD_BASE_DN")        # DC=company,DC=ru

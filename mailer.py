@@ -1,9 +1,15 @@
 """
-Создаёт черновик письма в Outlook (win32com) или сохраняет .msg-файл.
-Требует: установленный Outlook на Windows и пакет pywin32.
+Отправка email-отчётов.
+
+Два режима:
+  - SMTP (Flask-версия): send_smtp() — через smtplib, не нужен Outlook.
+  - Outlook COM (CLI/GUI): create_draft(), send() — через win32com, только Windows.
 """
 import os
+import smtplib
 import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import config
 
 
@@ -77,3 +83,36 @@ def send(table_html: str):
     mail = create_draft(table_html)
     mail.Send()
     print("Письмо отправлено.")
+
+
+# ---------------------------------------------------------------------------
+# SMTP — для Flask-версии (не требует Outlook)
+# ---------------------------------------------------------------------------
+
+def send_smtp(table_html: str, recipient: str,
+              smtp_host: str, smtp_port: int,
+              smtp_user: str, smtp_password: str,
+              from_addr: str, subject: str = None) -> str:
+    """
+    Отправляет одно письмо через SMTP (STARTTLS).
+
+    Возвращает 'ok' или 'error: <текст ошибки>'.
+    """
+    subj = subject or config.MAIL_SUBJECT
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subj
+    msg["From"] = from_addr
+    msg["To"] = recipient
+    msg.attach(MIMEText(build_html_body(table_html), "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.ehlo()
+            srv.login(smtp_user, smtp_password)
+            srv.sendmail(from_addr, [recipient], msg.as_string())
+        return "ok"
+    except Exception as e:
+        return f"error: {e}"

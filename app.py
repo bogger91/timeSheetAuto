@@ -1,0 +1,249 @@
+"""
+Flask-приложение для автоматизации отчёта по списанию часов.
+
+Маршруты:
+  GET  /              → редирект на /dashboard или /login
+  GET  /login         → форма ввода кредов (AD + SMTP)
+  POST /login         → сохранить в сессию, редирект на /dashboard
+  GET  /logout        → очистить сессию, редирект на /login
+
+  GET  /dashboard     → сводная таблица + форма загрузки Excel
+  POST /upload        → загрузить Excel, разобрать, сохранить в сессию
+
+  GET  /recipients    → список адресатов
+  POST /recipients/fetch  → загрузить из AD
+  POST /recipients/save   → сохранить отредактированный список
+
+  POST /send          → отправить рассылку, вернуть JSON {email: status}
+"""
+import os
+import tempfile
+import functools
+
+import pandas as pd
+from flask import (Flask, render_template, request, redirect,
+                   url_for, session, jsonify, flash)
+from flask_session import Session
+
+import config
+import parser as report_parser
+import ad_fetcher
+import mailer
+
+# ---------------------------------------------------------------------------
+# Приложение
+# ---------------------------------------------------------------------------
+
+app = Flask(__name__)
+app.secret_key = os.urandom(32)
+
+# Серверные сессии (хранятся на диске, не в cookie — данные могут быть большими)
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_FILE_DIR"] = os.path.join(tempfile.gettempdir(), "timesheetauto_sessions")
+app.config["SESSION_PERMANENT"] = False
+Session(app)
+
+
+# ---------------------------------------------------------------------------
+# Декоратор авторизации
+# ---------------------------------------------------------------------------
+
+def login_required(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+# ---------------------------------------------------------------------------
+# Авторизация
+# ---------------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    if session.get("logged_in"):
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        session["logged_in"]     = True
+        session["ad_user"]       = request.form.get("ad_user", "").strip()
+        session["ad_password"]   = request.form.get("ad_password", "")
+        session["smtp_host"]     = request.form.get("smtp_host", "").strip()
+        session["smtp_port"]     = int(request.form.get("smtp_port") or 587)
+        session["smtp_from"]     = request.form.get("smtp_from", "").strip()
+        # SMTP-пароль: отдельное поле, иначе = AD-пароль
+        smtp_pass = request.form.get("smtp_password", "").strip()
+        session["smtp_password"] = smtp_pass or session["ad_password"]
+        return redirect(url_for("dashboard"))
+
+    return render_template(
+        "login.html",
+        ad_server=config.AD_SERVER,
+        smtp_host_default=config.SMTP_HOST,
+        smtp_port_default=config.SMTP_PORT,
+    )
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    pivot = None
+    filename = session.get("upload_filename", "")
+    error = session.pop("upload_error", None)
+
+    if "pivot_json" in session:
+        try:
+            pivot = pd.read_json(session["pivot_json"], dtype=False)
+        except Exception:
+            pivot = None
+
+    # Список уникальных подразделений (без итоговой строки) для фильтра
+    departments = []
+    if pivot is not None:
+        departments = [
+            d for d in pivot["Подразделение"].tolist()
+            if str(d).upper() != "ИТОГО"
+        ]
+
+    return render_template(
+        "dashboard.html",
+        pivot=pivot,
+        departments=departments,
+        filename=filename,
+        error=error,
+    )
+
+
+@app.route("/upload", methods=["POST"])
+@login_required
+def upload():
+    file = request.files.get("excel_file")
+    if not file or file.filename == "":
+        session["upload_error"] = "Файл не выбран."
+        return redirect(url_for("dashboard"))
+
+    if not file.filename.lower().endswith((".xlsx", ".xls")):
+        session["upload_error"] = "Поддерживаются только файлы .xlsx / .xls."
+        return redirect(url_for("dashboard"))
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp_path = tmp.name
+            file.save(tmp_path)
+
+        pivot = report_parser.load_pivot(tmp_path)
+        session["pivot_json"] = pivot.to_json(force_ascii=False)
+        session["upload_filename"] = file.filename
+    except Exception as e:
+        session["upload_error"] = f"Ошибка при чтении файла: {e}"
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    return redirect(url_for("dashboard"))
+
+
+# ---------------------------------------------------------------------------
+# Адресаты
+# ---------------------------------------------------------------------------
+
+@app.route("/recipients")
+@login_required
+def recipients():
+    return render_template(
+        "recipients.html",
+        recipients=session.get("recipients", []),
+        ad_error=session.pop("ad_error", None),
+        ad_server=config.AD_SERVER,
+    )
+
+
+@app.route("/recipients/fetch", methods=["POST"])
+@login_required
+def fetch_recipients():
+    try:
+        emails = ad_fetcher.get_teamlead_emails(
+            user=session.get("ad_user"),
+            password=session.get("ad_password"),
+        )
+        session["recipients"] = emails
+    except Exception as e:
+        session["ad_error"] = str(e)
+    return redirect(url_for("recipients"))
+
+
+@app.route("/recipients/save", methods=["POST"])
+@login_required
+def save_recipients():
+    raw = request.form.get("recipients_text", "")
+    session["recipients"] = [
+        e.strip() for e in raw.splitlines() if e.strip()
+    ]
+    return redirect(url_for("recipients"))
+
+
+# ---------------------------------------------------------------------------
+# Отправка рассылки
+# ---------------------------------------------------------------------------
+
+@app.route("/send", methods=["POST"])
+@login_required
+def send():
+    if "pivot_json" not in session:
+        return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
+
+    recipients_list = session.get("recipients", [])
+    if not recipients_list:
+        return jsonify({"error": "Список адресатов пуст."}), 400
+
+    pivot = pd.read_json(session["pivot_json"], dtype=False)
+    table_html = report_parser.pivot_to_html(pivot)
+
+    smtp_host = session.get("smtp_host", "")
+    smtp_port = session.get("smtp_port", 587)
+    smtp_user = session.get("ad_user", "")
+    smtp_password = session.get("smtp_password", "")
+    from_addr = session.get("smtp_from", "")
+
+    if not smtp_host:
+        return jsonify({"error": "SMTP-сервер не задан. Проверьте настройки в форме входа."}), 400
+
+    results = {}
+    for email in recipients_list:
+        results[email] = mailer.send_smtp(
+            table_html=table_html,
+            recipient=email,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            smtp_user=smtp_user,
+            smtp_password=smtp_password,
+            from_addr=from_addr,
+        )
+
+    return jsonify(results)
+
+
+# ---------------------------------------------------------------------------
+# Запуск
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    os.makedirs(app.config["SESSION_FILE_DIR"], exist_ok=True)
+    app.run(host="127.0.0.1", port=5000, debug=False)
