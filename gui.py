@@ -48,12 +48,17 @@ class App(tk.Tk):
         mail_frame = ttk.LabelFrame(self, text="Получатели (через запятую)")
         mail_frame.grid(row=1, column=0, columnspan=2, sticky="ew", **pad)
 
+        ttk.Label(mail_frame, text="Кому (To):").grid(row=0, column=0, padx=5, sticky="w")
         self.mail_var = tk.StringVar()
-        ttk.Entry(mail_frame, textvariable=self.mail_var, width=50).grid(row=0, column=0, padx=5, pady=5)
+        ttk.Entry(mail_frame, textvariable=self.mail_var, width=50).grid(row=0, column=1, padx=5, pady=3)
         ttk.Button(mail_frame, text="Загрузить из AD",
-                   command=self._load_from_ad, width=18).grid(row=0, column=1, padx=5)
+                   command=self._load_from_ad, width=18).grid(row=0, column=2, padx=5)
         ttk.Button(mail_frame, text="Проверить AD",
-                   command=self._test_ad, width=14).grid(row=0, column=2, padx=5)
+                   command=self._test_ad, width=14).grid(row=0, column=3, padx=5)
+
+        ttk.Label(mail_frame, text="Копия (CC):").grid(row=1, column=0, padx=5, sticky="w")
+        self.cc_var = tk.StringVar()
+        ttk.Entry(mail_frame, textvariable=self.cc_var, width=50).grid(row=1, column=1, padx=5, pady=3)
 
         # --- Кнопки ---
         btn_frame = ttk.Frame(self)
@@ -86,6 +91,8 @@ class App(tk.Tk):
                 self.file_var.set(cfg["EXCEL_PATH"])
             if cfg.get("MAIL_TO"):
                 self.mail_var.set(cfg["MAIL_TO"])
+            if cfg.get("MAIL_CC"):
+                self.cc_var.set(cfg["MAIL_CC"])
         except Exception:
             pass
 
@@ -119,6 +126,9 @@ class App(tk.Tk):
                 elif line.startswith("MAIL_TO="):
                     new_lines.append(f"MAIL_TO={self.mail_var.get()}\n")
                     updated["MAIL_TO"] = True
+                elif line.startswith("MAIL_CC="):
+                    new_lines.append(f"MAIL_CC={self.cc_var.get()}\n")
+                    updated["MAIL_CC"] = True
                 else:
                     new_lines.append(line)
 
@@ -126,6 +136,8 @@ class App(tk.Tk):
                 new_lines.append(f"EXCEL_PATH={self.file_var.get()}\n")
             if "MAIL_TO" not in updated:
                 new_lines.append(f"MAIL_TO={self.mail_var.get()}\n")
+            if "MAIL_CC" not in updated:
+                new_lines.append(f"MAIL_CC={self.cc_var.get()}\n")
 
             with open("config.env", "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
