@@ -1,16 +1,23 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
-echo Запуск сервера...
-start "TimeSheet Auto" python app.py
 
-:: Ждём, пока Flask реально откроет порт 5000 (до 30 секунд)
+echo [1/2] Installing / checking dependencies...
+pip install -r requirements.txt --quiet --break-system-packages 2>nul ^
+  || pip install -r requirements.txt --quiet
+
+echo [2/2] Starting Flask server...
+:: cmd /k keeps the window open so errors are visible
+start "TimeSheet Auto — server" cmd /k python app.py
+
+:: Wait until port 5000 is actually listening (up to 30 s)
 set /a attempts=0
 :check_server
 set /a attempts+=1
 if %attempts% gtr 30 (
     echo.
-    echo Сервер не запустился за 30 секунд.
-    echo Проверьте окно "TimeSheet Auto" — там должна быть ошибка.
+    echo ERROR: server did not start in 30 seconds.
+    echo Check the "TimeSheet Auto" window for the Python error.
     pause
     exit /b 1
 )
