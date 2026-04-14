@@ -1,4 +1,5 @@
 config.env
+proxy.cfg
 data/
 *.msg
 __pycache__/

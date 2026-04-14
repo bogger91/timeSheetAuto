@@ -2,22 +2,60 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-echo [1/2] Installing / checking dependencies...
-pip install -r requirements.txt --quiet --break-system-packages 2>nul ^
-  || pip install -r requirements.txt --quiet
+:: ── Прокси ──────────────────────────────────────────────────────────────────
+:: Сохраняем прокси в proxy.cfg рядом со скриптом, чтобы не вводить каждый раз.
+set PROXY_CFG=%~dp0proxy.cfg
+set PIP_PROXY=
 
-echo [2/2] Starting Flask server...
-:: cmd /k keeps the window open so errors are visible
+if exist "%PROXY_CFG%" (
+    set /p PIP_PROXY=<"%PROXY_CFG%"
+)
+
+if "%PIP_PROXY%"=="" (
+    echo.
+    echo  Прокси для установки пакетов не задан.
+    echo  Введите адрес прокси и нажмите Enter.
+    echo  Формат:  http://proxy.company.ru:3128
+    echo  Или оставьте пустым, если прокси не нужен.
+    echo.
+    set /p PIP_PROXY=  Прокси:
+    echo.
+
+    if not "%PIP_PROXY%"=="" (
+        echo %PIP_PROXY%>"%PROXY_CFG%"
+        echo  Прокси сохранён в proxy.cfg
+    )
+)
+
+if not "%PIP_PROXY%"=="" (
+    set PIP_PROXY_FLAG=--proxy "%PIP_PROXY%"
+) else (
+    set PIP_PROXY_FLAG=
+)
+
+:: ── Зависимости ──────────────────────────────────────────────────────────────
+echo.
+echo [1/2] Проверка зависимостей...
+pip install -r requirements.txt --quiet %PIP_PROXY_FLAG% 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  ОШИБКА при установке пакетов.
+    echo  Если прокси неверный, удалите файл proxy.cfg и запустите снова.
+    pause
+    exit /b 1
+)
+
+:: ── Сервер ───────────────────────────────────────────────────────────────────
+echo [2/2] Запуск Flask-сервера...
 start "TimeSheet Auto — server" cmd /k python app.py
 
-:: Wait until port 5000 is actually listening (up to 30 s)
 set /a attempts=0
 :check_server
 set /a attempts+=1
 if %attempts% gtr 30 (
     echo.
-    echo ERROR: server did not start in 30 seconds.
-    echo Check the "TimeSheet Auto" window for the Python error.
+    echo  Сервер не запустился за 30 секунд.
+    echo  Смотрите окно "TimeSheet Auto — server" для деталей ошибки.
     pause
     exit /b 1
 )
