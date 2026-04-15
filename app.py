@@ -242,6 +242,32 @@ def save_recipients():
 
 
 # ---------------------------------------------------------------------------
+# Предпросмотр письма
+# ---------------------------------------------------------------------------
+
+@app.route("/preview")
+@login_required
+def preview():
+    if "pivot_json" not in session:
+        return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
+
+    pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
+    table_html = report_parser.pivot_to_html(pivot)
+    body_html = mailer.build_html_body(table_html)
+
+    recipients_list = session.get("recipients", [])
+
+    return jsonify({
+        "from_addr": session.get("smtp_from", ""),
+        "to": recipients_list,
+        "subject": config.MAIL_SUBJECT,
+        "smtp_host": session.get("smtp_host", ""),
+        "smtp_port": session.get("smtp_port", 587),
+        "body_html": body_html,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Отправка рассылки
 # ---------------------------------------------------------------------------
 

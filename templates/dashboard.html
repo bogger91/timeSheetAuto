@@ -45,6 +45,9 @@
     <a href="{{ url_for('recipients') }}" class="btn btn-sm btn-success ms-auto">
       Перейти к рассылке &rarr;
     </a>
+    <button id="btn-preview" class="btn btn-sm btn-outline-secondary" type="button">
+      Предпросмотр письма
+    </button>
   </div>
 
   <div class="table-responsive">
@@ -125,6 +128,63 @@
   </div>
 {% endif %}
 
+{# ── Модальное окно предпросмотра письма ── #}
+<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0" id="previewModalLabel">Предпросмотр письма</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        {# Метаданные письма #}
+        <div id="preview-meta" class="px-3 py-2 border-bottom bg-light" style="font-size:0.8rem;display:none;">
+          <table class="table table-sm table-borderless mb-0" style="font-size:inherit;">
+            <tbody>
+              <tr>
+                <th style="width:80px;white-space:nowrap;">От кого</th>
+                <td id="pm-from" class="text-break"></td>
+              </tr>
+              <tr>
+                <th>Кому</th>
+                <td id="pm-to" class="text-break"></td>
+              </tr>
+              <tr>
+                <th>Тема</th>
+                <td id="pm-subject"></td>
+              </tr>
+              <tr>
+                <th>SMTP</th>
+                <td id="pm-smtp" class="text-muted"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {# Спиннер / ошибка #}
+        <div id="preview-loading" class="text-center py-5">
+          <div class="spinner-border text-primary" role="status"></div>
+          <p class="mt-2 text-muted small">Загрузка предпросмотра…</p>
+        </div>
+        <div id="preview-error" class="alert alert-danger m-3" style="display:none;"></div>
+
+        {# iframe с телом письма #}
+        <iframe id="preview-frame"
+                sandbox="allow-same-origin"
+                style="display:none;width:100%;height:520px;border:none;"></iframe>
+      </div>
+
+      <div class="modal-footer py-2">
+        <small class="text-muted me-auto">Данные не отправляются. Это только предпросмотр.</small>
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -168,6 +228,56 @@
     });
   });
 
+})();
+
+// ── Предпросмотр письма ───────────────────────────────────────────────────
+(function () {
+  var btn = document.getElementById('btn-preview');
+  if (!btn) return;
+
+  var modal     = new bootstrap.Modal(document.getElementById('previewModal'));
+  var loading   = document.getElementById('preview-loading');
+  var errDiv    = document.getElementById('preview-error');
+  var meta      = document.getElementById('preview-meta');
+  var frame     = document.getElementById('preview-frame');
+
+  btn.addEventListener('click', function () {
+    // Сброс состояния
+    loading.style.display = '';
+    errDiv.style.display  = 'none';
+    meta.style.display    = 'none';
+    frame.style.display   = 'none';
+    frame.srcdoc          = '';
+    modal.show();
+
+    fetch('{{ url_for("preview") }}')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        loading.style.display = 'none';
+
+        if (data.error) {
+          errDiv.textContent    = data.error;
+          errDiv.style.display  = '';
+          return;
+        }
+
+        // Заполнить метаданные
+        document.getElementById('pm-from').textContent    = data.from_addr || '—';
+        document.getElementById('pm-to').textContent      = data.to.length ? data.to.join(', ') : '— (список пуст)';
+        document.getElementById('pm-subject').textContent = data.subject || '—';
+        document.getElementById('pm-smtp').textContent    = data.smtp_host + ':' + data.smtp_port;
+        meta.style.display = '';
+
+        // Вставить тело письма в iframe
+        frame.srcdoc        = data.body_html;
+        frame.style.display = '';
+      })
+      .catch(function (e) {
+        loading.style.display = 'none';
+        errDiv.textContent    = 'Ошибка запроса: ' + e;
+        errDiv.style.display  = '';
+      });
+  });
 })();
 </script>
 {% endblock %}
