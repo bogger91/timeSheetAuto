@@ -50,6 +50,8 @@ def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
 
     if has_dept:
         # Двухуровневая сводка: Управление → Отделы
+        # Строки где Отдел == Управление — это начальник управления:
+        # его часы входят в итог по управлению, но отдельной строкой не показываются.
         for group_name, group_df in df.groupby(group_col, sort=False):
             dept_pivot = (
                 group_df.groupby(dept_col, sort=False)[[config.COL_CAPACITY, config.COL_SPENT]]
@@ -57,30 +59,34 @@ def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
                 .reset_index()
             )
 
+            # Суммируем все строки включая начальника управления
             group_cap   = dept_pivot[config.COL_CAPACITY].sum()
             group_spent = dept_pivot[config.COL_SPENT].sum()
             group_pct   = round(group_spent / group_cap * 100, 1) if group_cap > 0 else 0.0
 
             rows.append({
-                "row_type":    "group",
-                "Управление":  group_name,
+                "row_type":      "group",
+                "Управление":    group_name,
                 "Подразделение": group_name,
-                "Capacity, ч":  group_cap,
-                "Потрачено, ч": group_spent,
-                "% списания":   group_pct,
+                "Capacity, ч":   group_cap,
+                "Потрачено, ч":  group_spent,
+                "% списания":    group_pct,
             })
 
             for _, dr in dept_pivot.iterrows():
+                # Пропускаем строку начальника управления (Отдел == Управление)
+                if str(dr[dept_col]).strip() == str(group_name).strip():
+                    continue
                 cap   = dr[config.COL_CAPACITY]
                 spent = dr[config.COL_SPENT]
                 pct   = round(spent / cap * 100, 1) if cap > 0 else 0.0
                 rows.append({
-                    "row_type":    "dept",
-                    "Управление":  group_name,
+                    "row_type":      "dept",
+                    "Управление":    group_name,
                     "Подразделение": dr[dept_col],
-                    "Capacity, ч":  cap,
-                    "Потрачено, ч": spent,
-                    "% списания":   pct,
+                    "Capacity, ч":   cap,
+                    "Потрачено, ч":  spent,
+                    "% списания":    pct,
                 })
     else:
         # Одноуровневая сводка (нет колонки Отдел)
