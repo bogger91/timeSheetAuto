@@ -147,6 +147,8 @@ def upload():
         session["pivot_json"] = pivot.to_json(force_ascii=False)
         session["upload_filename"] = file.filename
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         session["upload_error"] = f"Ошибка при чтении файла: {e}"
     finally:
         if tmp_path and os.path.exists(tmp_path):
