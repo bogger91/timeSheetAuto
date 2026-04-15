@@ -74,9 +74,14 @@
 
           {% elif rtype == 'group' %}
             {# ─── Строка Управления ─── #}
+            {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
             <tr class="row-group" data-group="{{ row['Подразделение'] }}">
               <td>{{ row['Подразделение'] }}</td>
-              <td></td>
+              <td>
+                {% if lead %}
+                  <span class="lead-name">{{ lead.name }}</span>
+                {% endif %}
+              </td>
               <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
               <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
               <td class="text-end
