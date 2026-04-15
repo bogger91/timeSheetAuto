@@ -138,10 +138,6 @@ def dashboard():
 
     # Словарь отдел → {name, email} для отображения начальников
     teamleads_raw = session.get("teamleads", [])
-    log.debug("teamleads from session (%d): %r", len(teamleads_raw), teamleads_raw)
-    if pivot is not None and "row_type" in pivot.columns:
-        dept_names = pivot.loc[pivot["row_type"] == "dept", "Подразделение"].tolist()
-        log.debug("dept names from pivot: %r", dept_names)
     dept_to_lead = {tl["department"]: tl for tl in teamleads_raw if tl.get("department")}
 
     return render_template(
