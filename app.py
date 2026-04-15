@@ -114,10 +114,17 @@ def dashboard():
     filename = session.get("upload_filename", "")
     error = session.pop("upload_error", None)
 
+    log.debug("dashboard(): session keys=%r, has pivot_json=%r, filename=%r, error=%r",
+              list(session.keys()), "pivot_json" in session, filename, error)
+
     if "pivot_json" in session:
+        pivot_json = session["pivot_json"]
+        log.debug("pivot_json length=%d chars", len(pivot_json))
         try:
-            pivot = pd.read_json(session["pivot_json"], dtype=False)
-        except Exception:
+            pivot = pd.read_json(pivot_json, dtype=False)
+            log.debug("pivot restored OK, shape=%s", pivot.shape)
+        except Exception as e:
+            log.error("Failed to restore pivot from session: %s\n%s", e, traceback.format_exc())
             pivot = None
 
     # Список уникальных подразделений (без итоговой строки) для фильтра
