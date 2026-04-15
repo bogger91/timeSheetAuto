@@ -71,7 +71,7 @@ def get_teamleads(server: str = None, user: str = None,
         search_base=config.AD_BASE_DN,
         search_filter=search_filter,
         search_scope=SUBTREE,
-        attributes=["displayName", "mail", "department", "title"],
+        attributes=["displayName", "mail", "department", "employeeType", "title"],
     )
 
     leads = []
@@ -80,18 +80,18 @@ def get_teamleads(server: str = None, user: str = None,
     for entry in conn.entries:
         email = str(entry.mail).strip()
         name = str(entry.displayName).strip()
-        department = str(entry.department).strip()
 
         if not email or email.lower() in ("", "none"):
             skipped.append(name or str(entry.entry_dn))
             continue
 
-        # Нормализуем "none" из ldap3 для department
-        if department.lower() == "none":
-            department = ""
+        # employeeType — подразделение/отдел для сопоставления с Excel
+        emp_type = str(entry.employeeType).strip()
+        if emp_type.lower() == "none":
+            emp_type = ""
 
-        leads.append({"name": name, "email": email, "department": department})
-        print(f"  + {name} <{email}> [{department}]")
+        leads.append({"name": name, "email": email, "department": emp_type})
+        print(f"  + {name} <{email}> [{emp_type}]")
 
     if skipped:
         print(f"  [!] Пропущены (нет email в AD): {', '.join(skipped)}")

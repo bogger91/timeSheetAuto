@@ -63,7 +63,7 @@ def print_entry(entry):
 
     priority = [
         "displayName", "sAMAccountName", "mail", "title",
-        "department", "company", "manager", "telephoneNumber",
+        "department", "employeeType", "company", "manager", "telephoneNumber",
         "memberOf",
     ]
 
