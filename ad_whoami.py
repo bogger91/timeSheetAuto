@@ -1,9 +1,13 @@
 """
-Диагностика: выводит все атрибуты вашего пользователя из AD.
+Диагностика: выводит все атрибуты пользователя из AD.
 Помогает проверить подключение и узнать точные названия полей.
 
-Запуск: python ad_whoami.py
+Запуск:
+  python ad_whoami.py               — информация о себе (из AD_USER)
+  python ad_whoami.py Иванов        — поиск по displayName (*Иванов*)
+  python ad_whoami.py ivanov        — поиск по sAMAccountName
 """
+import sys
 import config
 import ssl
 from ldap3 import Server, Connection, ALL, SUBTREE, NTLM, Tls
@@ -37,35 +41,26 @@ def extract_samaccountname(ad_user: str) -> str:
     return ad_user
 
 
-def main():
-    print(f"Подключение к {config.AD_SERVER} ...")
-    try:
-        conn = connect()
-    except Exception as e:
-        print(f"[Ошибка] Не удалось подключиться: {e}")
-        return
-
-    username = extract_samaccountname(config.AD_USER)
-    print(f"Поиск пользователя: {username}\n")
-
-    conn.search(
-        search_base=config.AD_BASE_DN,
-        search_filter=f"(&(objectClass=user)(sAMAccountName={username}))",
-        search_scope=SUBTREE,
-        attributes=["*"],   # все атрибуты
+def build_filter(query: str) -> str:
+    """По аргументу командной строки строит LDAP-фильтр."""
+    if not query:
+        username = extract_samaccountname(config.AD_USER)
+        return f"(&(objectClass=user)(sAMAccountName={username}))"
+    # Если содержит кириллицу — ищем по displayName
+    if any("\u0400" <= c <= "\u04ff" for c in query):
+        return f"(&(objectClass=user)(displayName=*{query}*))"
+    # Иначе — по sAMAccountName (логин) или displayName латиницей
+    return (
+        f"(&(objectClass=user)"
+        f"(|(sAMAccountName=*{query}*)(displayName=*{query}*)))"
     )
 
-    if not conn.entries:
-        print("[!] Пользователь не найден. Проверьте AD_BASE_DN и AD_USER в config.env.")
-        conn.unbind()
-        return
 
-    entry = conn.entries[0]
+def print_entry(entry):
     print("=" * 55)
     print(f"  DN: {entry.entry_dn}")
     print("=" * 55)
 
-    # Интересные поля — показываем первыми
     priority = [
         "displayName", "sAMAccountName", "mail", "title",
         "department", "company", "manager", "telephoneNumber",
@@ -88,7 +83,6 @@ def main():
         except Exception:
             pass
 
-    # Остальные непустые атрибуты
     print("\n  --- Остальные атрибуты ---")
     for attr in sorted(entry.entry_attributes):
         if attr.lower() in printed:
@@ -107,8 +101,42 @@ def main():
         except Exception:
             pass
 
-    conn.unbind()
     print("=" * 55)
+
+
+def main():
+    query = " ".join(sys.argv[1:]).strip()
+
+    print(f"Подключение к {config.AD_SERVER} ...")
+    try:
+        conn = connect()
+    except Exception as e:
+        print(f"[Ошибка] Не удалось подключиться: {e}")
+        return
+
+    search_filter = build_filter(query)
+    label = query or extract_samaccountname(config.AD_USER)
+    print(f"Поиск: {label}  (фильтр: {search_filter})\n")
+
+    conn.search(
+        search_base=config.AD_BASE_DN,
+        search_filter=search_filter,
+        search_scope=SUBTREE,
+        attributes=["*"],
+    )
+
+    if not conn.entries:
+        hint = "Проверьте AD_BASE_DN и AD_USER в config.env." if not query else \
+               f"Попробуйте другое написание: python ad_whoami.py {query}"
+        print(f"[!] Не найдено. {hint}")
+        conn.unbind()
+        return
+
+    print(f"Найдено записей: {len(conn.entries)}\n")
+    for entry in conn.entries:
+        print_entry(entry)
+
+    conn.unbind()
 
 
 if __name__ == "__main__":
