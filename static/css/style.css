@@ -1,66 +1,316 @@
 /* ===========================
-   TimeSheet Auto — custom CSS
-   Bootstrap 5 base, minimal overrides
+   TimeSheet Auto — Corporate Style
    =========================== */
 
+/* ---------- Base ---------- */
+:root {
+  --corp-navy:    #1a2b4a;
+  --corp-blue:    #2563a8;
+  --corp-blue-lt: #dce8f5;
+  --corp-border:  #c8ced6;
+  --corp-header:  #eef1f5;
+  --corp-bg:      #f4f5f7;
+  --corp-text:    #1e2530;
+  --corp-muted:   #5a6373;
+  --corp-red:     #b91c1c;
+  --corp-yellow:  #92400e;
+  --corp-green:   #166534;
+}
+
 body {
-  background-color: #f8f9fa;
-  font-size: 0.9rem;
+  background-color: var(--corp-bg);
+  color: var(--corp-text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 0.875rem;
 }
 
-/* Navbar */
+/* ---------- Navbar ---------- */
+.navbar {
+  background-color: var(--corp-navy) !important;
+  border-bottom: 3px solid var(--corp-blue);
+  padding-top: 0;
+  padding-bottom: 0;
+  min-height: 48px;
+}
+
 .navbar-brand {
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff !important;
+  padding: 12px 0;
 }
 
-/* Cards */
+.nav-link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.65) !important;
+  padding: 14px 4px !important;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -3px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-link:hover,
+.nav-link.active {
+  color: #fff !important;
+  border-bottom-color: #fff;
+}
+
+.navbar .btn-outline-light {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 14px;
+  border-radius: 2px;
+}
+
+.navbar-text {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.45) !important;
+}
+
+/* ---------- Page layout ---------- */
+.container-fluid {
+  max-width: 1280px;
+}
+
+/* ---------- Page title bar ---------- */
+.page-titlebar {
+  background: #fff;
+  border-bottom: 1px solid var(--corp-border);
+  padding: 10px 0 10px;
+  margin: -24px -24px 20px;
+  padding-left: 24px;
+  padding-right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-titlebar h5 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--corp-navy);
+  margin: 0;
+}
+
+/* ---------- Cards ---------- */
 .card {
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+  border-radius: 2px;
+  border: 1px solid var(--corp-border);
+  box-shadow: none;
 }
 
 .card-header {
-  background-color: #f1f3f5;
-  border-bottom: 1px solid #dee2e6;
-}
-
-/* Table */
-#pivot-table th {
-  white-space: nowrap;
-  font-size: 0.82rem;
+  background-color: var(--corp-header);
+  border-bottom: 1px solid var(--corp-border);
+  font-size: 0.78rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.06em;
+  color: var(--corp-muted);
+  padding: 8px 14px;
 }
 
-#pivot-table td,
-#pivot-table th {
+.card-body {
+  padding: 14px;
+}
+
+/* ---------- Table ---------- */
+.table {
+  font-size: 0.85rem;
+  border-color: var(--corp-border);
+  margin-bottom: 0;
+}
+
+.table thead th {
+  background-color: var(--corp-navy);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  border-color: #2d3f5e;
+  padding: 9px 12px;
+}
+
+.table tbody tr:hover {
+  background-color: var(--corp-blue-lt);
+}
+
+.table tbody td {
+  border-color: var(--corp-border);
+  padding: 7px 12px;
   vertical-align: middle;
 }
 
-/* Percentage colours already handled by Bootstrap text-* classes in template,
-   but keep a slightly bolder weight for readability */
-.text-danger   { font-weight: 600; }
-.text-success  { font-weight: 600; }
-.text-warning-emphasis { font-weight: 600; }
-
-/* Login page */
-.card .card-header.text-uppercase {
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
+/* Total row */
+.row-total td {
+  background-color: var(--corp-header);
+  font-weight: 700;
+  border-top: 2px solid var(--corp-border);
 }
 
-/* Recipients list */
-#recipients-list .list-group-item:hover {
-  background-color: #f8f9fa;
+/* Percentage colours */
+.pct-danger  { color: var(--corp-red);    font-weight: 700; }
+.pct-warning { color: var(--corp-yellow); font-weight: 700; }
+.pct-ok      { color: var(--corp-green);  font-weight: 700; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  border-radius: 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
 }
 
-/* Monospace inputs / textareas */
-.font-monospace {
+.btn-primary {
+  background-color: var(--corp-blue);
+  border-color: var(--corp-blue);
+}
+.btn-primary:hover {
+  background-color: #1e4f8c;
+  border-color: #1e4f8c;
+}
+
+.btn-outline-primary {
+  color: var(--corp-blue);
+  border-color: var(--corp-blue);
+}
+.btn-outline-primary:hover {
+  background-color: var(--corp-blue);
+}
+
+.btn-success {
+  background-color: #166534;
+  border-color: #166534;
+}
+.btn-success:hover {
+  background-color: #14532d;
+  border-color: #14532d;
+}
+
+/* ---------- Form controls ---------- */
+.form-control,
+.form-select {
+  border-radius: 2px;
+  border-color: var(--corp-border);
+  font-size: 0.85rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--corp-blue);
+  box-shadow: 0 0 0 2px rgba(37,99,168,0.15);
+}
+
+.form-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--corp-muted);
+  margin-bottom: 4px;
+}
+
+/* ---------- Login page ---------- */
+.login-wrap {
+  max-width: 480px;
+  margin: 40px auto 0;
+}
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-logo h4 {
+  font-size: 1rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--corp-navy);
+  margin: 0;
+}
+
+.login-logo p {
+  font-size: 0.78rem;
+  color: var(--corp-muted);
+  margin: 4px 0 0;
+}
+
+/* ---------- Recipients ---------- */
+#recipients-list .list-group-item {
+  border-left: none;
+  border-right: none;
+  border-color: var(--corp-border);
+  padding: 7px 0;
   font-size: 0.82rem;
 }
 
-/* Send summary */
-#send-summary .alert {
-  font-size: 0.9rem;
+#recipients-list .list-group-item:first-child { border-top: none; }
+
+#recipients-list .list-group-item:hover {
+  background-color: var(--corp-blue-lt);
+}
+
+/* ---------- Badges ---------- */
+.badge {
+  border-radius: 2px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+/* ---------- Alerts ---------- */
+.alert {
+  border-radius: 2px;
+  font-size: 0.85rem;
+}
+
+/* ---------- Monospace ---------- */
+.font-monospace {
+  font-size: 0.8rem;
+}
+
+/* ---------- Empty state ---------- */
+.empty-state {
+  text-align: center;
+  padding: 48px 0;
+  color: var(--corp-muted);
+}
+
+.empty-state .empty-icon {
+  font-size: 2.5rem;
+  opacity: 0.35;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.empty-state p {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+/* ---------- Toolbar strip ---------- */
+.toolbar-strip {
+  background: #fff;
+  border: 1px solid var(--corp-border);
+  border-radius: 2px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }

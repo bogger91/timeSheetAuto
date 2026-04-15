@@ -2,76 +2,38 @@
 {% block title %}Вход — TimeSheet Auto{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-6 col-lg-5">
+<div class="login-wrap">
 
-    <div class="text-center mb-4">
-      <h3 class="fw-bold text-primary">&#9201; TimeSheet Auto</h3>
-      <p class="text-muted small">Введите корпоративные учётные данные</p>
+  <div class="login-logo">
+    <h4>TimeSheet Auto</h4>
+    <p>Введите корпоративные учётные данные</p>
+  </div>
+
+  <form method="post" action="{{ url_for('login') }}">
+
+    <div class="card mb-4">
+      <div class="card-header">Active Directory</div>
+      <div class="card-body">
+        {% if ad_server %}
+          <p class="small text-muted mb-3 font-monospace">{{ ad_server }}</p>
+        {% endif %}
+        <div class="mb-3">
+          <label class="form-label">Логин</label>
+          <input type="text" name="ad_user" class="form-control"
+                 placeholder="user@company.ru"
+                 value="{{ request.form.get('ad_user', '') }}" required autofocus>
+        </div>
+        <div class="mb-0">
+          <label class="form-label">Пароль</label>
+          <input type="password" name="ad_password" class="form-control" required>
+        </div>
+      </div>
     </div>
 
-    <form method="post" action="{{ url_for('login') }}">
+    <div class="d-grid">
+      <button type="submit" class="btn btn-primary">Войти</button>
+    </div>
 
-      <!-- Active Directory -->
-      <div class="card mb-3">
-        <div class="card-header py-2 bg-light fw-semibold small text-uppercase text-muted">
-          Active Directory
-        </div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label class="form-label small">Логин</label>
-            <input type="text" name="ad_user" class="form-control"
-                   placeholder="DOMAIN\username  или  user@company.ru"
-                   value="{{ request.form.get('ad_user', '') }}" required autofocus>
-          </div>
-          <div class="mb-0">
-            <label class="form-label small">Пароль</label>
-            <input type="password" name="ad_password" class="form-control" required>
-          </div>
-        </div>
-      </div>
-
-      <!-- SMTP -->
-      <div class="card mb-4">
-        <div class="card-header py-2 bg-light fw-semibold small text-uppercase text-muted">
-          Почтовый сервер (SMTP)
-        </div>
-        <div class="card-body">
-          <div class="row g-3 mb-3">
-            <div class="col-8">
-              <label class="form-label small">Сервер</label>
-              <input type="text" name="smtp_host" class="form-control"
-                     placeholder="mail.company.ru"
-                     value="{{ request.form.get('smtp_host', smtp_host_default) }}" required>
-            </div>
-            <div class="col-4">
-              <label class="form-label small">Порт</label>
-              <input type="number" name="smtp_port" class="form-control"
-                     value="{{ request.form.get('smtp_port', smtp_port_default) }}" required>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="form-label small">От кого (email отправителя)</label>
-            <input type="email" name="smtp_from" class="form-control"
-                   placeholder="user@company.ru"
-                   value="{{ request.form.get('smtp_from', '') }}" required>
-          </div>
-          <div class="mb-0">
-            <label class="form-label small">
-              SMTP-пароль
-              <span class="text-muted fw-normal">(оставьте пустым, если совпадает с AD)</span>
-            </label>
-            <input type="password" name="smtp_password" class="form-control"
-                   placeholder="(необязательно)">
-          </div>
-        </div>
-      </div>
-
-      <div class="d-grid">
-        <button type="submit" class="btn btn-primary btn-lg">Войти</button>
-      </div>
-
-    </form>
-  </div>
+  </form>
 </div>
 {% endblock %}

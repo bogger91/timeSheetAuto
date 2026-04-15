@@ -71,23 +71,18 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        ad_user     = request.form.get("ad_user", "").strip()
+        ad_password = request.form.get("ad_password", "")
         session["logged_in"]     = True
-        session["ad_user"]       = request.form.get("ad_user", "").strip()
-        session["ad_password"]   = request.form.get("ad_password", "")
-        session["smtp_host"]     = request.form.get("smtp_host", "").strip()
-        session["smtp_port"]     = int(request.form.get("smtp_port") or 587)
-        session["smtp_from"]     = request.form.get("smtp_from", "").strip()
-        # SMTP-пароль: отдельное поле, иначе = AD-пароль
-        smtp_pass = request.form.get("smtp_password", "").strip()
-        session["smtp_password"] = smtp_pass or session["ad_password"]
+        session["ad_user"]       = ad_user
+        session["ad_password"]   = ad_password
+        session["smtp_host"]     = config.SMTP_HOST
+        session["smtp_port"]     = config.SMTP_PORT
+        session["smtp_from"]     = config.SMTP_FROM or ad_user
+        session["smtp_password"] = ad_password
         return redirect(url_for("dashboard"))
 
-    return render_template(
-        "login.html",
-        ad_server=config.AD_SERVER,
-        smtp_host_default=config.SMTP_HOST,
-        smtp_port_default=config.SMTP_PORT,
-    )
+    return render_template("login.html", ad_server=config.AD_SERVER)
 
 
 @app.route("/logout")

@@ -20,6 +20,7 @@ MAIL_CC = [a.strip() for a in get("MAIL_CC").split(",") if a.strip()]
 # SMTP (для Flask-версии)
 SMTP_HOST = get("SMTP_HOST", "")
 SMTP_PORT = int(get("SMTP_PORT", "587"))
+SMTP_FROM = get("SMTP_FROM", "")   # email отправителя; если пусто — используется AD-логин
 
 # Active Directory
 AD_SERVER = get("AD_SERVER")          # ldap://dc01.company.ru

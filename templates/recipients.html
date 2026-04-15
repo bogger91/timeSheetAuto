@@ -2,15 +2,23 @@
 {% block title %}Адресаты — TimeSheet Auto{% endblock %}
 
 {% block content %}
-<div class="row g-4">
 
-  <!-- Левая колонка: источник адресов -->
+<div class="toolbar-strip mb-3">
+  <h5 class="mb-0 me-auto" style="font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--corp-navy);">Управление адресатами</h5>
+  <button id="send-btn" class="btn btn-sm btn-success"
+          {% if not recipients %}disabled{% endif %}>
+    Отправить рассылку
+  </button>
+</div>
+
+<div class="row g-3">
+
+  <!-- Левая колонка: источник -->
   <div class="col-lg-4">
     <div class="card h-100">
-      <div class="card-header fw-semibold">Источник адресатов</div>
+      <div class="card-header">Источник адресатов</div>
       <div class="card-body d-flex flex-column gap-3">
 
-        <!-- Загрузить из AD -->
         <div>
           <p class="small text-muted mb-2">
             Загрузить тим-лидов из Active Directory
@@ -20,7 +28,7 @@
           </p>
           <form method="post" action="{{ url_for('fetch_recipients') }}">
             <button type="submit" class="btn btn-outline-primary btn-sm w-100">
-              &#128100; Загрузить из AD
+              Загрузить из AD
             </button>
           </form>
           {% if ad_error %}
@@ -30,59 +38,55 @@
 
         <hr class="my-1">
 
-        <!-- Ввести вручную -->
         <div>
           <p class="small text-muted mb-2">
             Или введите адреса вручную (по одному на строку):
           </p>
           <form method="post" action="{{ url_for('save_recipients') }}">
-            <textarea name="recipients_text" class="form-control font-monospace small"
+            <textarea name="recipients_text" class="form-control font-monospace"
                       rows="10" placeholder="user1@company.ru&#10;user2@company.ru"
             >{{ recipients | join('\n') }}</textarea>
             <button type="submit" class="btn btn-outline-secondary btn-sm w-100 mt-2">
-              &#128190; Сохранить список
+              Сохранить список
             </button>
           </form>
         </div>
+
       </div>
     </div>
   </div>
 
-  <!-- Правая колонка: текущий список + кнопка отправки -->
+  <!-- Правая колонка: список -->
   <div class="col-lg-8">
     <div class="card">
       <div class="card-header d-flex align-items-center justify-content-between">
-        <span class="fw-semibold">
+        <span>
           Текущий список
           {% if recipients %}
             <span class="badge bg-secondary ms-1">{{ recipients | length }}</span>
           {% endif %}
         </span>
-        <button id="send-btn" class="btn btn-success btn-sm"
-                {% if not recipients %}disabled{% endif %}>
-          &#9993; Отправить рассылку
-        </button>
       </div>
-      <div class="card-body">
+      <div class="card-body p-0">
         {% if recipients %}
           <ul class="list-group list-group-flush" id="recipients-list">
             {% for email in recipients %}
-              <li class="list-group-item d-flex align-items-center justify-content-between
-                          py-2 px-0" id="row-{{ loop.index0 }}">
-                <span class="font-monospace small">{{ email }}</span>
-                <span class="send-status small ms-3"></span>
+              <li class="list-group-item d-flex align-items-center justify-content-between"
+                  id="row-{{ loop.index0 }}">
+                <span class="font-monospace">{{ email }}</span>
+                <span class="send-status ms-3"></span>
               </li>
             {% endfor %}
           </ul>
         {% else %}
-          <p class="text-muted text-center py-4">
-            Список пуст. Загрузите из AD или введите вручную.
-          </p>
+          <div class="empty-state">
+            <span class="empty-icon">&#9993;</span>
+            <p>Список пуст. Загрузите из AD или введите вручную.</p>
+          </div>
         {% endif %}
       </div>
     </div>
 
-    <!-- Итог отправки -->
     <div id="send-summary" class="mt-3" style="display:none;"></div>
   </div>
 
@@ -95,7 +99,6 @@
   const btn = document.getElementById('send-btn');
   if (!btn) return;
 
-  // Список email-адресов из шаблона
   const emails = {{ recipients | tojson }};
 
   btn.addEventListener('click', function () {
@@ -108,7 +111,7 @@
         if (data.error) {
           showSummary('danger', data.error);
           btn.disabled = false;
-          btn.textContent = '✉ Отправить рассылку';
+          btn.textContent = 'Отправить рассылку';
           return;
         }
 
@@ -130,15 +133,15 @@
 
         const cls = fail === 0 ? 'success' : (ok === 0 ? 'danger' : 'warning');
         showSummary(cls,
-          'Отправлено: <strong>' + ok + '</strong> ' +
-          (fail > 0 ? '&nbsp;|&nbsp; Ошибок: <strong>' + fail + '</strong>' : '')
+          'Отправлено: <strong>' + ok + '</strong>' +
+          (fail > 0 ? ' &nbsp;|&nbsp; Ошибок: <strong>' + fail + '</strong>' : '')
         );
         btn.textContent = 'Готово';
       })
       .catch(function (err) {
         showSummary('danger', 'Ошибка сети: ' + err);
         btn.disabled = false;
-        btn.textContent = '✉ Отправить рассылку';
+        btn.textContent = 'Отправить рассылку';
       });
   });
 
