@@ -44,9 +44,13 @@ run.bat          — запуск Flask на Windows без терминала
 Настройки хранятся в `config.env` (не в репозитории). Шаблон:
 
 ```env
+# Прокси для pip (используется только run.bat при установке пакетов; пусто — без прокси)
+PIP_PROXY=http://proxy.company.ru:3128
+
 # Excel
 EXCEL_PATH=report.xlsx
 COL_GROUP=Управление
+COL_DEPT=Отдел
 COL_CAPACITY=Capacity, ч
 COL_SPENT=Потрачено, ч
 

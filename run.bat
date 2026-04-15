@@ -2,28 +2,11 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-:: ── Прокси ──────────────────────────────────────────────────────────────────
-:: Сохраняем прокси в proxy.cfg рядом со скриптом, чтобы не вводить каждый раз.
-set PROXY_CFG=%~dp0proxy.cfg
+:: ── Прокси из config.env ──────────────────────────────────────────────────────
 set PIP_PROXY=
-
-if exist "%PROXY_CFG%" (
-    set /p PIP_PROXY=<"%PROXY_CFG%"
-)
-
-if "%PIP_PROXY%"=="" (
-    echo.
-    echo  Прокси для установки пакетов не задан.
-    echo  Введите адрес прокси и нажмите Enter.
-    echo  Формат:  http://proxy.company.ru:3128
-    echo  Или оставьте пустым, если прокси не нужен.
-    echo.
-    set /p PIP_PROXY=  Прокси:
-    echo.
-
-    if not "%PIP_PROXY%"=="" (
-        echo %PIP_PROXY%>"%PROXY_CFG%"
-        echo  Прокси сохранён в proxy.cfg
+if exist "%~dp0config.env" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("%~dp0config.env") do (
+        if /i "%%A"=="PIP_PROXY" set PIP_PROXY=%%B
     )
 )
 
@@ -40,7 +23,7 @@ pip install -r requirements.txt --quiet %PIP_PROXY_FLAG% 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo  ОШИБКА при установке пакетов.
-    echo  Если прокси неверный, удалите файл proxy.cfg и запустите снова.
+    echo  Проверьте значение PIP_PROXY в config.env.
     pause
     exit /b 1
 )
