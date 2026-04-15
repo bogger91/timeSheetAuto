@@ -161,6 +161,35 @@ body {
   border-top: 2px solid var(--corp-border);
 }
 
+/* Group row (Управление) */
+.row-group td {
+  background-color: #e8edf4;
+  font-weight: 700;
+  border-top: 2px solid var(--corp-border);
+  cursor: pointer;
+  user-select: none;
+}
+.row-group td:first-child::before {
+  content: '▾ ';
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+.row-group.collapsed td:first-child::before {
+  content: '▸ ';
+}
+
+/* Dept row (Отдел) — с отступом */
+.row-dept td:first-child {
+  padding-left: 24px;
+}
+
+/* ФИО начальника — приглушённый */
+.lead-name {
+  font-size: 0.78rem;
+  color: var(--corp-muted);
+  white-space: nowrap;
+}
+
 /* Percentage colours */
 .pct-danger  { color: var(--corp-red);    font-weight: 700; }
 .pct-warning { color: var(--corp-yellow); font-weight: 700; }

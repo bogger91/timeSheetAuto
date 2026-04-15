@@ -29,14 +29,19 @@
       <span class="badge bg-secondary">{{ filename }}</span>
     {% endif %}
     <div class="d-flex align-items-center gap-2">
-      <label class="form-label mb-0 text-nowrap">Подразделение:</label>
-      <select id="dept-filter" class="form-select form-select-sm" style="max-width:240px;">
+      <label class="form-label mb-0 text-nowrap">Управление:</label>
+      <select id="group-filter" class="form-select form-select-sm" style="max-width:300px;">
         <option value="">— все —</option>
-        {% for dept in departments %}
-          <option value="{{ dept }}">{{ dept }}</option>
+        {% for g in groups %}
+          <option value="{{ g }}">{{ g }}</option>
         {% endfor %}
       </select>
     </div>
+    {% if not dept_to_lead %}
+      <span class="badge bg-warning text-dark ms-1" title="Загрузите адресатов из AD, чтобы видеть ФИО начальников">
+        ФИО не загружены
+      </span>
+    {% endif %}
     <a href="{{ url_for('recipients') }}" class="btn btn-sm btn-success ms-auto">
       Перейти к рассылке &rarr;
     </a>
@@ -47,6 +52,7 @@
       <thead>
         <tr>
           <th>Подразделение</th>
+          <th>Начальник</th>
           <th class="text-end">Capacity, ч</th>
           <th class="text-end">Потрачено, ч</th>
           <th class="text-end">% списания</th>
@@ -54,22 +60,54 @@
       </thead>
       <tbody>
         {% for _, row in pivot.iterrows() %}
-          {% set is_total = row['Подразделение']|upper == 'ИТОГО' %}
-          {% set pct = row['% списания'] %}
-          <tr class="{{ 'row-total' if is_total else '' }}"
-              data-dept="{{ row['Подразделение'] }}">
-            <td>{{ row['Подразделение'] }}</td>
-            <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
-            <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
-            <td class="text-end
-              {% if not is_total %}
+          {% set rtype = row['row_type'] %}
+          {% set pct   = row['% списания'] %}
+
+          {% if rtype == 'total' %}
+            {# ─── Итоговая строка ─── #}
+            <tr class="row-total" data-group="">
+              <td colspan="2"><strong>ИТОГО</strong></td>
+              <td class="text-end"><strong>{{ "%.1f"|format(row['Capacity, ч']) }}</strong></td>
+              <td class="text-end"><strong>{{ "%.1f"|format(row['Потрачено, ч']) }}</strong></td>
+              <td class="text-end"><strong>{{ "%.1f"|format(pct) }}%</strong></td>
+            </tr>
+
+          {% elif rtype == 'group' %}
+            {# ─── Строка Управления ─── #}
+            <tr class="row-group" data-group="{{ row['Подразделение'] }}">
+              <td>{{ row['Подразделение'] }}</td>
+              <td></td>
+              <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
+              <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
+              <td class="text-end
                 {% if pct < 80 %}pct-danger
                 {% elif pct < 95 %}pct-warning
-                {% else %}pct-ok{% endif %}
-              {% endif %}">
-              {{ "%.1f"|format(pct) }}%
-            </td>
-          </tr>
+                {% else %}pct-ok{% endif %}">
+                {{ "%.1f"|format(pct) }}%
+              </td>
+            </tr>
+
+          {% else %}
+            {# ─── Строка Отдела ─── #}
+            {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
+            <tr class="row-dept" data-group="{{ row['Управление'] }}">
+              <td>{{ row['Подразделение'] }}</td>
+              <td>
+                {% if lead %}
+                  <span class="lead-name">{{ lead.name }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
+              <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
+              <td class="text-end
+                {% if pct < 80 %}pct-danger
+                {% elif pct < 95 %}pct-warning
+                {% else %}pct-ok{% endif %}">
+                {{ "%.1f"|format(pct) }}%
+              </td>
+            </tr>
+          {% endif %}
+
         {% endfor %}
       </tbody>
     </table>
@@ -87,18 +125,44 @@
 {% block scripts %}
 <script>
 (function () {
-  const filter = document.getElementById('dept-filter');
+
+  // ── Сворачивание/разворачивание строк Управления ──────────────────────────
+  document.querySelectorAll('.row-group').forEach(function (groupRow) {
+    groupRow.addEventListener('click', function () {
+      var group = this.dataset.group;
+      var collapsed = this.classList.toggle('collapsed');
+      document.querySelectorAll('.row-dept[data-group="' + group + '"]').forEach(function (r) {
+        r.style.display = collapsed ? 'none' : '';
+      });
+    });
+  });
+
+  // ── Фильтр по Управлению ──────────────────────────────────────────────────
+  var filter = document.getElementById('group-filter');
   if (!filter) return;
 
   filter.addEventListener('change', function () {
-    const val = this.value;
+    var val = this.value;
     document.querySelectorAll('#pivot-table tbody tr').forEach(function (row) {
-      const dept = row.dataset.dept || '';
-      const isTotal = dept.toUpperCase() === 'ИТОГО';
+      var isTotal = row.classList.contains('row-total');
       if (isTotal) { row.style.display = ''; return; }
-      row.style.display = (!val || dept === val) ? '' : 'none';
+
+      var group = row.dataset.group || '';
+
+      if (!val) {
+        // Показать всё; восстановить состояние collapsed для dept-строк
+        row.style.display = '';
+      } else if (row.classList.contains('row-group')) {
+        row.style.display = (group === val) ? '' : 'none';
+      } else {
+        // dept-строка: показывать только если совпадает управление
+        var parentGroupRow = document.querySelector('.row-group[data-group="' + group + '"]');
+        var isCollapsed = parentGroupRow && parentGroupRow.classList.contains('collapsed');
+        row.style.display = (group === val && !isCollapsed) ? '' : 'none';
+      }
     });
   });
+
 })();
 </script>
 {% endblock %}

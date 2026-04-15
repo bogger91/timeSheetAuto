@@ -10,6 +10,7 @@ def get(key: str, default: str = "") -> str:
 
 EXCEL_PATH = get("EXCEL_PATH", "")
 COL_GROUP = get("COL_GROUP", "Управление")
+COL_DEPT  = get("COL_DEPT",  "Отдел")
 COL_CAPACITY = get("COL_CAPACITY", "Capacity, ч")
 COL_SPENT = get("COL_SPENT", "Потрачено, ч")
 

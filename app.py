@@ -128,18 +128,23 @@ def dashboard():
             log.error("Failed to restore pivot from session: %s\n%s", e, traceback.format_exc())
             pivot = None
 
-    # Список уникальных подразделений (без итоговой строки) для фильтра
-    departments = []
+    # Список уникальных управлений (без итоговой строки) для фильтра
+    groups = []
     if pivot is not None:
-        departments = [
-            d for d in pivot["Подразделение"].tolist()
+        groups = [
+            d for d in pivot.loc[pivot["row_type"] == "group", "Подразделение"].tolist()
             if str(d).upper() != "ИТОГО"
         ]
+
+    # Словарь отдел → {name, email} для отображения начальников
+    teamleads_raw = session.get("teamleads", [])
+    dept_to_lead = {tl["department"]: tl for tl in teamleads_raw if tl.get("department")}
 
     return render_template(
         "dashboard.html",
         pivot=pivot,
-        departments=departments,
+        groups=groups,
+        dept_to_lead=dept_to_lead,
         filename=filename,
         error=error,
     )
@@ -211,11 +216,12 @@ def recipients():
 @login_required
 def fetch_recipients():
     try:
-        emails = ad_fetcher.get_teamlead_emails(
+        teamleads = ad_fetcher.get_teamleads(
             user=session.get("ad_user"),
             password=session.get("ad_password"),
         )
-        session["recipients"] = emails
+        session["teamleads"]  = teamleads
+        session["recipients"] = [tl["email"] for tl in teamleads]
     except Exception as e:
         session["ad_error"] = str(e)
     return redirect(url_for("recipients"))

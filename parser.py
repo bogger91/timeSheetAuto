@@ -1,6 +1,13 @@
 """
-Читает Excel из FineBI и строит сводную таблицу:
-  Управление | Capacity, ч | Потрачено, ч | % списания
+Читает Excel из FineBI и строит двухуровневую сводную таблицу:
+  Управление → Отдел | Capacity, ч | Потрачено, ч | % списания
+
+load_pivot()     — возвращает DataFrame со строками трёх типов:
+                   row_type = "group"   — строка Управления (суммарная)
+                   row_type = "dept"    — строка Отдела (дочерняя)
+                   row_type = "total"   — итоговая строка
+
+pivot_to_html()  — HTML-таблица для вставки в тело письма (только отделы + итог)
 """
 import pandas as pd
 import config
@@ -21,7 +28,7 @@ def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
         df[col] = (
             df[col]
             .astype(str)
-            .str.replace("\xa0", "", regex=False)   # неразрывный пробел
+            .str.replace("\xa0", "", regex=False)
             .str.replace(" ", "", regex=False)
             .str.replace(",", ".", regex=False)
             .pipe(pd.to_numeric, errors="coerce")
@@ -29,42 +36,89 @@ def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
         )
 
     group_col = config.COL_GROUP
+    dept_col  = config.COL_DEPT
+
     if group_col not in df.columns:
         raise ValueError(
             f"Колонка группировки '{group_col}' не найдена. "
             f"Доступные колонки: {list(df.columns)}"
         )
 
-    pivot = (
-        df.groupby(group_col, sort=False)[[config.COL_CAPACITY, config.COL_SPENT]]
-        .sum()
-        .reset_index()
-    )
+    has_dept = dept_col in df.columns
 
-    pivot["% списания"] = pivot.apply(
-        lambda row: (row[config.COL_SPENT] / row[config.COL_CAPACITY] * 100)
-        if row[config.COL_CAPACITY] > 0
-        else 0,
-        axis=1,
-    ).round(1)
+    rows = []
 
-    pivot = pivot.rename(
-        columns={
-            config.COL_GROUP: "Подразделение",
-            config.COL_CAPACITY: "Capacity, ч",
-            config.COL_SPENT: "Потрачено, ч",
-        }
-    )
+    if has_dept:
+        # Двухуровневая сводка: Управление → Отделы
+        for group_name, group_df in df.groupby(group_col, sort=False):
+            dept_pivot = (
+                group_df.groupby(dept_col, sort=False)[[config.COL_CAPACITY, config.COL_SPENT]]
+                .sum()
+                .reset_index()
+            )
+
+            group_cap   = dept_pivot[config.COL_CAPACITY].sum()
+            group_spent = dept_pivot[config.COL_SPENT].sum()
+            group_pct   = round(group_spent / group_cap * 100, 1) if group_cap > 0 else 0.0
+
+            rows.append({
+                "row_type":    "group",
+                "Управление":  group_name,
+                "Подразделение": group_name,
+                "Capacity, ч":  group_cap,
+                "Потрачено, ч": group_spent,
+                "% списания":   group_pct,
+            })
+
+            for _, dr in dept_pivot.iterrows():
+                cap   = dr[config.COL_CAPACITY]
+                spent = dr[config.COL_SPENT]
+                pct   = round(spent / cap * 100, 1) if cap > 0 else 0.0
+                rows.append({
+                    "row_type":    "dept",
+                    "Управление":  group_name,
+                    "Подразделение": dr[dept_col],
+                    "Capacity, ч":  cap,
+                    "Потрачено, ч": spent,
+                    "% списания":   pct,
+                })
+    else:
+        # Одноуровневая сводка (нет колонки Отдел)
+        pivot = (
+            df.groupby(group_col, sort=False)[[config.COL_CAPACITY, config.COL_SPENT]]
+            .sum()
+            .reset_index()
+        )
+        for _, r in pivot.iterrows():
+            cap   = r[config.COL_CAPACITY]
+            spent = r[config.COL_SPENT]
+            pct   = round(spent / cap * 100, 1) if cap > 0 else 0.0
+            rows.append({
+                "row_type":    "group",
+                "Управление":  r[group_col],
+                "Подразделение": r[group_col],
+                "Capacity, ч":  cap,
+                "Потрачено, ч": spent,
+                "% списания":   pct,
+            })
+
+    pivot = pd.DataFrame(rows)
 
     # Итоговая строка
-    total_cap = pivot["Capacity, ч"].sum()
-    total_spent = pivot["Потрачено, ч"].sum()
-    total_pct = round(total_spent / total_cap * 100, 1) if total_cap > 0 else 0
+    total_cap   = pivot.loc[pivot["row_type"] != "group", "Capacity, ч"].sum() if has_dept \
+                  else pivot["Capacity, ч"].sum()
+    total_spent = pivot.loc[pivot["row_type"] != "group", "Потрачено, ч"].sum() if has_dept \
+                  else pivot["Потрачено, ч"].sum()
+    total_pct   = round(total_spent / total_cap * 100, 1) if total_cap > 0 else 0.0
 
-    total_row = pd.DataFrame(
-        [["ИТОГО", total_cap, total_spent, total_pct]],
-        columns=pivot.columns,
-    )
+    total_row = pd.DataFrame([{
+        "row_type":    "total",
+        "Управление":  "ИТОГО",
+        "Подразделение": "ИТОГО",
+        "Capacity, ч":  total_cap,
+        "Потрачено, ч": total_spent,
+        "% списания":   total_pct,
+    }])
     pivot = pd.concat([pivot, total_row], ignore_index=True)
 
     return pivot
@@ -80,20 +134,30 @@ def pivot_to_html(pivot: pd.DataFrame) -> str:
         "background:#1F497D;color:#fff;padding:6px 10px;"
         "border:1px solid #ccc;text-align:left;"
     )
-    td_style = "padding:5px 10px;border:1px solid #ccc;"
+    td_style     = "padding:5px 10px;border:1px solid #ccc;"
     td_num_style = td_style + "text-align:right;"
-    total_style = td_style + "font-weight:bold;background:#f2f2f2;"
+    total_style     = td_style + "font-weight:bold;background:#f2f2f2;"
     total_num_style = total_style + "text-align:right;"
+    group_style     = td_style + "font-weight:bold;background:#e8edf4;"
+    group_num_style = group_style + "text-align:right;"
+    dept_style      = td_style + "padding-left:24px;"
 
     rows_html = []
     for _, row in pivot.iterrows():
-        is_total = str(row["Подразделение"]).upper() == "ИТОГО"
-        td = total_style if is_total else td_style
-        td_n = total_num_style if is_total else td_num_style
-
+        rtype = row.get("row_type", "dept")
         pct_val = row["% списания"]
-        # Цветовая индикация: <80% — красный, 80-95% — жёлтый, >=95% — зелёный
-        if not is_total:
+
+        if rtype == "total":
+            td = total_style
+            td_n = total_num_style
+            pct_cell = f'<td style="{td_n}">{pct_val:.1f}%</td>'
+        elif rtype == "group":
+            td = group_style
+            td_n = group_num_style
+            pct_cell = f'<td style="{td_n}">{pct_val:.1f}%</td>'
+        else:
+            td = dept_style
+            td_n = td_num_style
             if pct_val < 80:
                 color = "#c00000"
             elif pct_val < 95:
@@ -104,8 +168,6 @@ def pivot_to_html(pivot: pd.DataFrame) -> str:
                 f'<td style="{td_n}color:{color};font-weight:bold;">'
                 f"{pct_val:.1f}%</td>"
             )
-        else:
-            pct_cell = f'<td style="{td_n}">{pct_val:.1f}%</td>'
 
         rows_html.append(
             f"<tr>"

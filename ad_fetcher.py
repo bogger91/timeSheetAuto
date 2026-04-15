@@ -56,10 +56,11 @@ def _connect(server: str = None, user: str = None,
     return conn
 
 
-def get_teamlead_emails(server: str = None, user: str = None,
-                        password: str = None) -> list[str]:
+def get_teamleads(server: str = None, user: str = None,
+                  password: str = None) -> list[dict]:
     """
-    Возвращает список email-адресов тим-лидов из AD.
+    Возвращает список тим-лидов из AD в виде:
+      [{"name": "Иванов Иван", "email": "ivanov@company.ru", "department": "Отдел ..."}]
     Параметры server/user/password перекрывают значения из config.env.
     Поднимает исключение при ошибке подключения или поиска.
     """
@@ -73,25 +74,39 @@ def get_teamlead_emails(server: str = None, user: str = None,
         attributes=["displayName", "mail", "department", "title"],
     )
 
-    emails = []
+    leads = []
     skipped = []
 
     for entry in conn.entries:
         email = str(entry.mail).strip()
         name = str(entry.displayName).strip()
+        department = str(entry.department).strip()
 
         if not email or email.lower() in ("", "none"):
             skipped.append(name or str(entry.entry_dn))
             continue
 
-        emails.append(email)
-        print(f"  + {name} <{email}>")
+        # Нормализуем "none" из ldap3 для department
+        if department.lower() == "none":
+            department = ""
+
+        leads.append({"name": name, "email": email, "department": department})
+        print(f"  + {name} <{email}> [{department}]")
 
     if skipped:
         print(f"  [!] Пропущены (нет email в AD): {', '.join(skipped)}")
 
     conn.unbind()
-    return emails
+    return leads
+
+
+def get_teamlead_emails(server: str = None, user: str = None,
+                        password: str = None) -> list[str]:
+    """
+    Возвращает список email-адресов тим-лидов из AD.
+    Обёртка над get_teamleads() для обратной совместимости.
+    """
+    return [tl["email"] for tl in get_teamleads(server=server, user=user, password=password)]
 
 
 def _build_filter() -> str:
