@@ -191,9 +191,9 @@ body {
 }
 
 /* Percentage colours */
-.pct-danger  { color: var(--corp-red);    font-weight: 700; }
-.pct-warning { color: var(--corp-yellow); font-weight: 700; }
-.pct-ok      { color: var(--corp-green);  font-weight: 700; }
+.table td.pct-danger  { color: var(--corp-red)    !important; font-weight: 700; }
+.table td.pct-warning { color: var(--corp-yellow) !important; font-weight: 700; }
+.table td.pct-ok      { color: var(--corp-green)  !important; font-weight: 700; }
 
 /* ---------- Buttons ---------- */
 .btn {
