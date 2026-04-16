@@ -93,12 +93,7 @@
               </td>
               <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
               <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
-              <td class="text-end
-                {% if pct < 80 %}pct-danger
-                {% elif pct < 95 %}pct-warning
-                {% else %}pct-ok{% endif %}">
-                {{ "%.1f"|format(pct) }}%
-              </td>
+              <td class="text-end">{{ "%.1f"|format(pct) }}%</td>
             </tr>
 
           {% else %}
