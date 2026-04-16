@@ -19,7 +19,7 @@ def load_period(excel_path: str | None = None) -> str | None:
     path = excel_path or config.EXCEL_PATH
     try:
         df = pd.read_excel(path, engine="openpyxl", usecols=[config.COL_DATE])
-        dates = pd.to_datetime(df[config.COL_DATE], errors="coerce").dropna()
+        dates = pd.to_datetime(df[config.COL_DATE], dayfirst=True, errors="coerce").dropna()
         if dates.empty:
             return None
         return f"{dates.min().strftime('%d.%m.%Y')} – {dates.max().strftime('%d.%m.%Y')}"
