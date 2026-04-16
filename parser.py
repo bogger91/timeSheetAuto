@@ -13,6 +13,20 @@ import pandas as pd
 import config
 
 
+def load_period(excel_path: str | None = None) -> str | None:
+    """Возвращает строку вида 'DD.MM.YYYY – DD.MM.YYYY' по колонке с датами.
+    Если колонка отсутствует или пуста — возвращает None."""
+    path = excel_path or config.EXCEL_PATH
+    try:
+        df = pd.read_excel(path, engine="openpyxl", usecols=[config.COL_DATE])
+        dates = pd.to_datetime(df[config.COL_DATE], errors="coerce").dropna()
+        if dates.empty:
+            return None
+        return f"{dates.min().strftime('%d.%m.%Y')} – {dates.max().strftime('%d.%m.%Y')}"
+    except Exception:
+        return None
+
+
 def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
     path = excel_path or config.EXCEL_PATH
 

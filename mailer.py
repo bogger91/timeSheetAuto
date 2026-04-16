@@ -23,15 +23,16 @@ def _get_outlook():
     return win32com.client.Dispatch("Outlook.Application")
 
 
-def build_html_body(table_html: str) -> str:
+def build_html_body(table_html: str, period: str | None = None) -> str:
     today = datetime.date.today().strftime("%d.%m.%Y")
+    period_str = f" за период <b>{period}</b>" if period else f" по состоянию на <b>{today}</b>"
     return f"""
 <html>
 <body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">
   <p>Добрый день,</p>
   <p>
     Направляю еженедельный отчёт по проценту списания рабочих часов
-    по подразделениям разработки по состоянию на <b>{today}</b>.
+    по подразделениям разработки{period_str}.
   </p>
   {table_html}
   <br>
@@ -92,7 +93,8 @@ def send(table_html: str):
 def send_smtp(table_html: str, recipient: str,
               smtp_host: str, smtp_port: int,
               smtp_user: str, smtp_password: str,
-              from_addr: str, subject: str = None) -> str:
+              from_addr: str, subject: str = None,
+              period: str | None = None) -> str:
     """
     Отправляет одно письмо через SMTP (STARTTLS).
 
@@ -104,7 +106,7 @@ def send_smtp(table_html: str, recipient: str,
     msg["Subject"] = subj
     msg["From"] = from_addr
     msg["To"] = recipient
-    msg.attach(MIMEText(build_html_body(table_html), "html", "utf-8"))
+    msg.attach(MIMEText(build_html_body(table_html, period=period), "html", "utf-8"))
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:

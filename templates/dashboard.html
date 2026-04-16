@@ -24,6 +24,12 @@
 
 {% if pivot is not none %}
 
+  {% if period %}
+  <div class="alert alert-info py-2 px-3 mb-2" style="font-size:0.85rem;">
+    Период списания: <strong>{{ period }}</strong>
+  </div>
+  {% endif %}
+
   <div class="toolbar-strip">
     {% if filename %}
       <span class="badge bg-secondary">{{ filename }}</span>

@@ -13,6 +13,7 @@ COL_GROUP = get("COL_GROUP", "Управление")
 COL_DEPT  = get("COL_DEPT",  "Отдел")
 COL_CAPACITY = get("COL_CAPACITY", "Capacity, ч")
 COL_SPENT = get("COL_SPENT", "Потрачено, ч")
+COL_DATE = get("COL_DATE", "Дата")
 
 MAIL_SUBJECT = get("MAIL_SUBJECT", "Отчёт по списанию часов за неделю")
 MAIL_TO = [a.strip() for a in get("MAIL_TO").split(",") if a.strip()]

@@ -143,6 +143,7 @@ def dashboard():
         dept_to_lead=dept_to_lead,
         filename=filename,
         error=error,
+        period=session.get("period"),
     )
 
 
@@ -182,6 +183,7 @@ def upload():
         log.debug("pivot loaded OK, shape=%s, columns=%r", pivot.shape, list(pivot.columns))
         session["pivot_json"] = pivot.to_json(force_ascii=False)
         session["upload_filename"] = file.filename
+        session["period"] = report_parser.load_period(tmp_path)
         log.info("Upload success: %r", file.filename)
     except Exception as e:
         log.error("Upload failed: %s\n%s", e, traceback.format_exc())
@@ -252,12 +254,14 @@ def preview():
 
     recipients_list = session.get("recipients", [])
 
+    period = session.get("period")
+    subject = f"{config.MAIL_SUBJECT} ({period})" if period else config.MAIL_SUBJECT
     smtp_user = session.get("ad_user", "")
     return jsonify({
         "from_addr": config.SMTP_FROM or smtp_user,
         "to": recipients_list,
-        "subject": config.MAIL_SUBJECT,
-        "body_html": body_html,
+        "subject": subject,
+        "body_html": mailer.build_html_body(table_html, period=period),
     })
 
 
@@ -290,7 +294,11 @@ def send():
     from_addr = config.SMTP_FROM or smtp_user
 
     if not smtp_host:
-        return jsonify({"error": "SMTP-сервер не задан. Проверьте настройки в форме входа."}), 400
+        return jsonify({"error": "SMTP-сервер не задан. Проверьте настройки в config.env."}), 400
+
+    period = session.get("period")
+    if subject_override is None:
+        subject_override = f"{config.MAIL_SUBJECT} ({period})" if period else config.MAIL_SUBJECT
 
     results = {}
     for email in recipients_list:
@@ -303,6 +311,7 @@ def send():
             smtp_password=smtp_password,
             from_addr=from_addr,
             subject=subject_override,
+            period=period,
         )
 
     return jsonify(results)
