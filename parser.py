@@ -130,8 +130,14 @@ def load_pivot(excel_path: str | None = None) -> pd.DataFrame:
     return pivot
 
 
-def pivot_to_html(pivot: pd.DataFrame) -> str:
-    """Возвращает HTML-таблицу для вставки в тело письма."""
+def pivot_to_html(pivot: pd.DataFrame, dept_to_lead: dict | None = None) -> str:
+    """Возвращает HTML-таблицу для вставки в тело письма.
+
+    dept_to_lead — словарь {название подразделения: {"name": ..., "email": ...}},
+                   если передан, добавляет колонку «Начальник».
+    """
+    has_leads = bool(dept_to_lead)
+
     styles = (
         "border-collapse:collapse;font-family:Calibri,Arial,sans-serif;"
         "font-size:11pt;"
@@ -152,15 +158,22 @@ def pivot_to_html(pivot: pd.DataFrame) -> str:
     for _, row in pivot.iterrows():
         rtype = row.get("row_type", "dept")
         pct_val = row["% списания"]
+        subdivision = row["Подразделение"]
 
         if rtype == "total":
             td = total_style
             td_n = total_num_style
             pct_cell = f'<td style="{td_n}">{pct_val:.1f}%</td>'
+            lead_cell = f'<td style="{td}"></td>' if has_leads else ""
         elif rtype == "group":
             td = group_style
             td_n = group_num_style
             pct_cell = f'<td style="{td_n}">{pct_val:.1f}%</td>'
+            if has_leads:
+                lead = dept_to_lead.get(subdivision, {})
+                lead_cell = f'<td style="{td}">{lead.get("name", "")}</td>'
+            else:
+                lead_cell = ""
         else:
             td = dept_style
             td_n = td_num_style
@@ -174,19 +187,27 @@ def pivot_to_html(pivot: pd.DataFrame) -> str:
                 f'<td style="{td_n}color:{color};font-weight:bold;">'
                 f"{pct_val:.1f}%</td>"
             )
+            if has_leads:
+                lead = dept_to_lead.get(subdivision, {})
+                lead_cell = f'<td style="{td_style}">{lead.get("name", "")}</td>'
+            else:
+                lead_cell = ""
 
         rows_html.append(
             f"<tr>"
-            f'<td style="{td}">{row["Подразделение"]}</td>'
+            f'<td style="{td}">{subdivision}</td>'
+            f"{lead_cell}"
             f'<td style="{td_n}">{row["Capacity, ч"]:,.1f}</td>'
             f'<td style="{td_n}">{row["Потрачено, ч"]:,.1f}</td>'
             f"{pct_cell}"
             f"</tr>"
         )
 
+    lead_th = f'<th style="{th_style}">Начальник</th>' if has_leads else ""
     header = (
         f'<tr>'
         f'<th style="{th_style}">Подразделение</th>'
+        f"{lead_th}"
         f'<th style="{th_style}">Capacity, ч</th>'
         f'<th style="{th_style}">Потрачено, ч</th>'
         f'<th style="{th_style}">% списания</th>'

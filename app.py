@@ -248,7 +248,8 @@ def preview():
         return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
 
     pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
-    table_html = report_parser.pivot_to_html(pivot)
+    dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
+    table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
     body_html = mailer.build_html_body(table_html)
 
     recipients_list = session.get("recipients", [])
@@ -273,12 +274,17 @@ def send():
     if "pivot_json" not in session:
         return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
 
-    recipients_list = session.get("recipients", [])
+    body = request.get_json(silent=True) or {}
+    subject_override = body.get("subject")
+    recipients_override = body.get("recipients")
+
+    recipients_list = recipients_override if recipients_override is not None else session.get("recipients", [])
     if not recipients_list:
         return jsonify({"error": "Список адресатов пуст."}), 400
 
     pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
-    table_html = report_parser.pivot_to_html(pivot)
+    dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
+    table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
 
     smtp_host = session.get("smtp_host", "")
     smtp_port = session.get("smtp_port", 587)
@@ -299,6 +305,7 @@ def send():
             smtp_user=smtp_user,
             smtp_password=smtp_password,
             from_addr=from_addr,
+            subject=subject_override,
         )
 
     return jsonify(results)

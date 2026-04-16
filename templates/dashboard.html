@@ -139,36 +139,41 @@
       </div>
 
       <div class="modal-body p-0">
-        {# Метаданные письма #}
+        {# Метаданные письма — редактируемые поля #}
         <div id="preview-meta" class="px-3 py-2 border-bottom bg-light" style="font-size:0.8rem;display:none;">
           <table class="table table-sm table-borderless mb-0" style="font-size:inherit;">
             <tbody>
               <tr>
                 <th style="width:80px;white-space:nowrap;">От кого</th>
-                <td id="pm-from" class="text-break"></td>
+                <td><input type="email" id="pm-from" class="form-control form-control-sm" readonly></td>
               </tr>
               <tr>
                 <th>Кому</th>
-                <td id="pm-to" class="text-break"></td>
+                <td>
+                  <textarea id="pm-to" class="form-control form-control-sm font-monospace" rows="3"
+                            placeholder="один адрес на строку или через запятую"></textarea>
+                  <div class="form-text">Каждый адрес на отдельной строке или через запятую.</div>
+                </td>
               </tr>
               <tr>
                 <th>Тема</th>
-                <td id="pm-subject"></td>
+                <td><input type="text" id="pm-subject" class="form-control form-control-sm"></td>
               </tr>
               <tr>
                 <th>SMTP</th>
-                <td id="pm-smtp" class="text-muted"></td>
+                <td><span id="pm-smtp" class="text-muted"></span></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {# Спиннер / ошибка #}
+        {# Спиннер / ошибка / результат отправки #}
         <div id="preview-loading" class="text-center py-5">
           <div class="spinner-border text-primary" role="status"></div>
           <p class="mt-2 text-muted small">Загрузка предпросмотра…</p>
         </div>
         <div id="preview-error" class="alert alert-danger m-3" style="display:none;"></div>
+        <div id="preview-send-result" class="m-3" style="display:none;"></div>
 
         {# iframe с телом письма #}
         <iframe id="preview-frame"
@@ -177,8 +182,11 @@
       </div>
 
       <div class="modal-footer py-2">
-        <small class="text-muted me-auto">Данные не отправляются. Это только предпросмотр.</small>
+        <small class="text-muted me-auto">Поля «Кому» и «Тема» можно отредактировать перед отправкой.</small>
         <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+        <button type="button" id="btn-send-from-preview" class="btn btn-sm btn-success" style="display:none;">
+          Отправить
+        </button>
       </div>
 
     </div>
@@ -235,19 +243,26 @@
   var btn = document.getElementById('btn-preview');
   if (!btn) return;
 
-  var modal     = new bootstrap.Modal(document.getElementById('previewModal'));
-  var loading   = document.getElementById('preview-loading');
-  var errDiv    = document.getElementById('preview-error');
-  var meta      = document.getElementById('preview-meta');
-  var frame     = document.getElementById('preview-frame');
+  var loading    = document.getElementById('preview-loading');
+  var errDiv     = document.getElementById('preview-error');
+  var sendResult = document.getElementById('preview-send-result');
+  var meta       = document.getElementById('preview-meta');
+  var frame      = document.getElementById('preview-frame');
+  var sendBtn    = document.getElementById('btn-send-from-preview');
 
   btn.addEventListener('click', function () {
+    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal'));
+
     // Сброс состояния
-    loading.style.display = '';
-    errDiv.style.display  = 'none';
-    meta.style.display    = 'none';
-    frame.style.display   = 'none';
-    frame.srcdoc          = '';
+    loading.style.display    = '';
+    errDiv.style.display     = 'none';
+    sendResult.style.display = 'none';
+    meta.style.display       = 'none';
+    frame.style.display      = 'none';
+    frame.srcdoc             = '';
+    sendBtn.style.display    = 'none';
+    sendBtn.disabled         = false;
+    sendBtn.textContent      = 'Отправить';
     modal.show();
 
     fetch('{{ url_for("preview") }}')
@@ -256,17 +271,18 @@
         loading.style.display = 'none';
 
         if (data.error) {
-          errDiv.textContent    = data.error;
-          errDiv.style.display  = '';
+          errDiv.textContent   = data.error;
+          errDiv.style.display = '';
           return;
         }
 
-        // Заполнить метаданные
-        document.getElementById('pm-from').textContent    = data.from_addr || '—';
-        document.getElementById('pm-to').textContent      = data.to.length ? data.to.join(', ') : '— (список пуст)';
-        document.getElementById('pm-subject').textContent = data.subject || '—';
-        document.getElementById('pm-smtp').textContent    = data.smtp_host + ':' + data.smtp_port;
-        meta.style.display = '';
+        // Заполнить редактируемые поля
+        document.getElementById('pm-from').value    = data.from_addr || '';
+        document.getElementById('pm-to').value      = data.to.length ? data.to.join('\n') : '';
+        document.getElementById('pm-subject').value = data.subject || '';
+        document.getElementById('pm-smtp').textContent = data.smtp_host + ':' + data.smtp_port;
+        meta.style.display    = '';
+        sendBtn.style.display = '';
 
         // Вставить тело письма в iframe
         frame.srcdoc        = data.body_html;
@@ -278,6 +294,77 @@
         errDiv.style.display  = '';
       });
   });
+
+  // ── Отправка из модалки ──────────────────────────────────────────────────
+  sendBtn.addEventListener('click', function () {
+    var subject    = document.getElementById('pm-subject').value.trim();
+    var toRaw      = document.getElementById('pm-to').value;
+    var recipients = toRaw.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+
+    if (!recipients.length) {
+      errDiv.textContent   = 'Укажите хотя бы одного адресата.';
+      errDiv.style.display = '';
+      return;
+    }
+
+    sendBtn.disabled    = true;
+    sendBtn.textContent = 'Отправляю…';
+    errDiv.style.display     = 'none';
+    sendResult.style.display = 'none';
+
+    fetch('{{ url_for("send") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject: subject, recipients: recipients }),
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        sendBtn.textContent = 'Отправить';
+        sendBtn.disabled    = false;
+
+        if (data.error) {
+          errDiv.textContent   = data.error;
+          errDiv.style.display = '';
+          return;
+        }
+
+        var ok = 0, fail = 0;
+        var rows = recipients.map(function (email) {
+          var status = data[email] || 'error: нет ответа';
+          if (status === 'ok') {
+            ok++;
+            return '<li class="list-group-item d-flex justify-content-between align-items-center py-1">' +
+              '<span class="font-monospace small">' + escHtml(email) + '</span>' +
+              '<span class="badge bg-success">&#10003; Отправлено</span></li>';
+          } else {
+            fail++;
+            return '<li class="list-group-item d-flex justify-content-between align-items-center py-1">' +
+              '<span class="font-monospace small">' + escHtml(email) + '</span>' +
+              '<span class="badge bg-danger" title="' + escHtml(status) + '">&#10007; Ошибка</span></li>';
+          }
+        });
+
+        var cls = fail === 0 ? 'success' : (ok === 0 ? 'danger' : 'warning');
+        sendResult.innerHTML =
+          '<div class="alert alert-' + cls + ' py-2 mb-2">' +
+            'Отправлено: <strong>' + ok + '</strong>' +
+            (fail > 0 ? ' &nbsp;|&nbsp; Ошибок: <strong>' + fail + '</strong>' : '') +
+          '</div>' +
+          '<ul class="list-group list-group-flush" style="font-size:0.8rem;">' + rows.join('') + '</ul>';
+        sendResult.style.display = '';
+      })
+      .catch(function (e) {
+        sendBtn.textContent  = 'Отправить';
+        sendBtn.disabled     = false;
+        errDiv.textContent   = 'Ошибка сети: ' + e;
+        errDiv.style.display = '';
+      });
+  });
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                    .replace(/"/g,'&quot;');
+  }
 })();
 </script>
 {% endblock %}
