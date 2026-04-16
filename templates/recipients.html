@@ -31,6 +31,9 @@
               Загрузить из AD
             </button>
           </form>
+          {% if ad_success %}
+            <div class="alert alert-success mt-2 py-2 small">{{ ad_success }}</div>
+          {% endif %}
           {% if ad_error %}
             <div class="alert alert-danger mt-2 py-2 small">{{ ad_error }}</div>
           {% endif %}

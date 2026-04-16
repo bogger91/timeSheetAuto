@@ -86,13 +86,9 @@ def login():
     if request.method == "POST":
         ad_user     = request.form.get("ad_user", "").strip()
         ad_password = request.form.get("ad_password", "")
-        session["logged_in"]     = True
-        session["ad_user"]       = ad_user
-        session["ad_password"]   = ad_password
-        session["smtp_host"]     = config.SMTP_HOST
-        session["smtp_port"]     = config.SMTP_PORT
-        session["smtp_from"]     = config.SMTP_FROM or ad_user
-        session["smtp_password"] = ad_password
+        session["logged_in"]  = True
+        session["ad_user"]    = ad_user
+        session["ad_password"] = ad_password
         return redirect(url_for("dashboard"))
 
     return render_template("login.html", ad_server=config.AD_SERVER)
@@ -208,6 +204,7 @@ def recipients():
         "recipients.html",
         recipients=session.get("recipients", []),
         ad_error=session.pop("ad_error", None),
+        ad_success=session.pop("ad_success", None),
         ad_server=config.AD_SERVER,
     )
 
@@ -222,6 +219,7 @@ def fetch_recipients():
         )
         session["teamleads"]  = teamleads
         session["recipients"] = [tl["email"] for tl in teamleads]
+        session["ad_success"] = f"Загружено записей из AD: {len(teamleads)}"
     except Exception as e:
         session["ad_error"] = str(e)
     return redirect(url_for("recipients"))
@@ -254,12 +252,11 @@ def preview():
 
     recipients_list = session.get("recipients", [])
 
+    smtp_user = session.get("ad_user", "")
     return jsonify({
-        "from_addr": session.get("smtp_from", ""),
+        "from_addr": config.SMTP_FROM or smtp_user,
         "to": recipients_list,
         "subject": config.MAIL_SUBJECT,
-        "smtp_host": session.get("smtp_host", ""),
-        "smtp_port": session.get("smtp_port", 587),
         "body_html": body_html,
     })
 
@@ -286,11 +283,11 @@ def send():
     dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
     table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
 
-    smtp_host = session.get("smtp_host", "")
-    smtp_port = session.get("smtp_port", 587)
+    smtp_host = config.SMTP_HOST
+    smtp_port = config.SMTP_PORT
     smtp_user = session.get("ad_user", "")
-    smtp_password = session.get("smtp_password", "")
-    from_addr = session.get("smtp_from", "")
+    smtp_password = session.get("ad_password", "")
+    from_addr = config.SMTP_FROM or smtp_user
 
     if not smtp_host:
         return jsonify({"error": "SMTP-сервер не задан. Проверьте настройки в форме входа."}), 400

@@ -91,10 +91,9 @@ def get_teamleads(server: str = None, user: str = None,
             emp_type = ""
 
         leads.append({"name": name, "email": email, "department": emp_type})
-        print(f"  + {name} <{email}> [{emp_type}]")
 
     if skipped:
-        print(f"  [!] Пропущены (нет email в AD): {', '.join(skipped)}")
+        pass  # тихо игнорируем записи без email
 
     conn.unbind()
     return leads

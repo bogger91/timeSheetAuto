@@ -159,10 +159,6 @@
                 <th>Тема</th>
                 <td><input type="text" id="pm-subject" class="form-control form-control-sm"></td>
               </tr>
-              <tr>
-                <th>SMTP</th>
-                <td><span id="pm-smtp" class="text-muted"></span></td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -280,7 +276,6 @@
         document.getElementById('pm-from').value    = data.from_addr || '';
         document.getElementById('pm-to').value      = data.to.length ? data.to.join('\n') : '';
         document.getElementById('pm-subject').value = data.subject || '';
-        document.getElementById('pm-smtp').textContent = data.smtp_host + ':' + data.smtp_port;
         meta.style.display    = '';
         sendBtn.style.display = '';
 
