@@ -23,21 +23,31 @@ def _get_outlook():
     return win32com.client.Dispatch("Outlook.Application")
 
 
-def build_html_body(table_html: str, period: str | None = None) -> str:
+DEFAULT_GREETING = "Добрый день,"
+DEFAULT_INTRO = "Направляю еженедельный отчёт по проценту списания рабочих часов по подразделениям разработки{period_str}."
+DEFAULT_FOOTER = "Письмо сформировано автоматически. Данные из FineBI / Jira."
+
+
+def build_html_body(table_html: str, period: str | None = None,
+                    greeting: str | None = None,
+                    intro: str | None = None,
+                    footer: str | None = None) -> str:
     today = datetime.date.today().strftime("%d.%m.%Y")
     period_str = f" за период <b>{period}</b>" if period else f" по состоянию на <b>{today}</b>"
+
+    greeting_text = greeting if greeting is not None else DEFAULT_GREETING
+    intro_text = (intro if intro is not None else DEFAULT_INTRO).replace("{period_str}", period_str)
+    footer_text = footer if footer is not None else DEFAULT_FOOTER
+
     return f"""
 <html>
 <body style="font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000;">
-  <p>Добрый день,</p>
-  <p>
-    Направляю еженедельный отчёт по проценту списания рабочих часов
-    по подразделениям разработки{period_str}.
-  </p>
+  <p>{greeting_text}</p>
+  <p>{intro_text}</p>
   {table_html}
   <br>
   <p style="color:#666;font-size:9pt;">
-    Письмо сформировано автоматически. Данные из FineBI / Jira.
+    {footer_text}
   </p>
 </body>
 </html>
@@ -94,7 +104,10 @@ def send_smtp(table_html: str, recipient: str,
               smtp_host: str, smtp_port: int,
               smtp_user: str, smtp_password: str,
               from_addr: str, subject: str = None,
-              period: str | None = None) -> str:
+              period: str | None = None,
+              greeting: str | None = None,
+              intro: str | None = None,
+              footer: str | None = None) -> str:
     """
     Отправляет одно письмо через SMTP (STARTTLS).
 
@@ -106,7 +119,10 @@ def send_smtp(table_html: str, recipient: str,
     msg["Subject"] = subj
     msg["From"] = from_addr
     msg["To"] = recipient
-    msg.attach(MIMEText(build_html_body(table_html, period=period), "html", "utf-8"))
+    msg.attach(MIMEText(
+        build_html_body(table_html, period=period, greeting=greeting, intro=intro, footer=footer),
+        "html", "utf-8",
+    ))
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:

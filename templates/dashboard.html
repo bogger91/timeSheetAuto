@@ -140,42 +140,101 @@
       </div>
 
       <div class="modal-body p-0">
-        {# Метаданные письма — редактируемые поля #}
-        <div id="preview-meta" class="px-3 py-2 border-bottom bg-light" style="font-size:0.8rem;display:none;">
-          <table class="table table-sm table-borderless mb-0" style="font-size:inherit;">
-            <tbody>
-              <tr>
-                <th style="width:80px;white-space:nowrap;">От кого</th>
-                <td><input type="email" id="pm-from" class="form-control form-control-sm" readonly></td>
-              </tr>
-              <tr>
-                <th>Кому</th>
-                <td>
-                  <textarea id="pm-to" class="form-control form-control-sm font-monospace" rows="3"
-                            placeholder="один адрес на строку или через запятую"></textarea>
-                  <div class="form-text">Каждый адрес на отдельной строке или через запятую.</div>
-                </td>
-              </tr>
-              <tr>
-                <th>Тема</th>
-                <td><input type="text" id="pm-subject" class="form-control form-control-sm"></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
 
-        {# Спиннер / ошибка / результат отправки #}
-        <div id="preview-loading" class="text-center py-5">
-          <div class="spinner-border text-primary" role="status"></div>
-          <p class="mt-2 text-muted small">Загрузка предпросмотра…</p>
-        </div>
-        <div id="preview-error" class="alert alert-danger m-3" style="display:none;"></div>
-        <div id="preview-send-result" class="m-3" style="display:none;"></div>
+        {# Вкладки #}
+        <ul class="nav nav-tabs px-3 pt-2" id="previewTabs" role="tablist" style="font-size:0.82rem;">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="tab-preview-btn" data-bs-toggle="tab"
+                    data-bs-target="#tab-preview" type="button" role="tab">Предпросмотр</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="tab-template-btn" data-bs-toggle="tab"
+                    data-bs-target="#tab-template" type="button" role="tab">Шаблон письма</button>
+          </li>
+        </ul>
 
-        {# iframe с телом письма #}
-        <iframe id="preview-frame"
-                sandbox="allow-same-origin"
-                style="display:none;width:100%;height:520px;border:none;"></iframe>
+        <div class="tab-content">
+
+          {# ── Вкладка: Предпросмотр ── #}
+          <div class="tab-pane fade show active" id="tab-preview" role="tabpanel">
+
+            {# Метаданные письма — редактируемые поля #}
+            <div id="preview-meta" class="px-3 py-2 border-bottom bg-light" style="font-size:0.8rem;display:none;">
+              <table class="table table-sm table-borderless mb-0" style="font-size:inherit;">
+                <tbody>
+                  <tr>
+                    <th style="width:80px;white-space:nowrap;">От кого</th>
+                    <td><input type="email" id="pm-from" class="form-control form-control-sm" readonly></td>
+                  </tr>
+                  <tr>
+                    <th>Кому</th>
+                    <td>
+                      <textarea id="pm-to" class="form-control form-control-sm font-monospace" rows="3"
+                                placeholder="один адрес на строку или через запятую"></textarea>
+                      <div class="form-text">Каждый адрес на отдельной строке или через запятую.</div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th>Тема</th>
+                    <td><input type="text" id="pm-subject" class="form-control form-control-sm"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {# Спиннер / ошибка / результат отправки #}
+            <div id="preview-loading" class="text-center py-5">
+              <div class="spinner-border text-primary" role="status"></div>
+              <p class="mt-2 text-muted small">Загрузка предпросмотра…</p>
+            </div>
+            <div id="preview-error" class="alert alert-danger m-3" style="display:none;"></div>
+            <div id="preview-send-result" class="m-3" style="display:none;"></div>
+
+            {# iframe с телом письма #}
+            <iframe id="preview-frame"
+                    sandbox="allow-same-origin"
+                    style="display:none;width:100%;height:520px;border:none;"></iframe>
+          </div>
+
+          {# ── Вкладка: Шаблон письма ── #}
+          <div class="tab-pane fade" id="tab-template" role="tabpanel">
+            <div class="px-3 py-3" style="font-size:0.82rem;">
+              <p class="text-muted mb-3">
+                Отредактируйте текст письма. В поле «Вступление» можно использовать
+                <code>{period_str}</code> — будет заменено на период из Excel.
+              </p>
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Приветствие</label>
+                <input type="text" id="tpl-greeting" class="form-control form-control-sm"
+                       placeholder="Добрый день,">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Вступление</label>
+                <textarea id="tpl-intro" class="form-control form-control-sm" rows="3"
+                          placeholder="Направляю еженедельный отчёт…"></textarea>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label fw-semibold mb-1">Подпись / нижний колонтитул</label>
+                <input type="text" id="tpl-footer" class="form-control form-control-sm"
+                       placeholder="Письмо сформировано автоматически…">
+              </div>
+
+              <div class="d-flex gap-2">
+                <button type="button" id="btn-tpl-save" class="btn btn-sm btn-primary">
+                  Сохранить и обновить предпросмотр
+                </button>
+                <button type="button" id="btn-tpl-reset" class="btn btn-sm btn-outline-secondary">
+                  Сбросить к исходному
+                </button>
+              </div>
+              <div id="tpl-save-result" class="mt-2" style="display:none;"></div>
+            </div>
+          </div>
+
+        </div>{# /tab-content #}
       </div>
 
       <div class="modal-footer py-2">
@@ -247,10 +306,7 @@
   var frame      = document.getElementById('preview-frame');
   var sendBtn    = document.getElementById('btn-send-from-preview');
 
-  btn.addEventListener('click', function () {
-    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal'));
-
-    // Сброс состояния
+  function loadPreview() {
     loading.style.display    = '';
     errDiv.style.display     = 'none';
     sendResult.style.display = 'none';
@@ -260,7 +316,6 @@
     sendBtn.style.display    = 'none';
     sendBtn.disabled         = false;
     sendBtn.textContent      = 'Отправить';
-    modal.show();
 
     fetch('{{ url_for("preview") }}')
       .then(function (r) { return r.json(); })
@@ -280,6 +335,17 @@
         meta.style.display    = '';
         sendBtn.style.display = '';
 
+        // Заполнить поля шаблона (если ещё не заполнены)
+        var tplGreeting = document.getElementById('tpl-greeting');
+        var tplIntro    = document.getElementById('tpl-intro');
+        var tplFooter   = document.getElementById('tpl-footer');
+        if (tplGreeting && !tplGreeting.dataset.loaded) {
+          tplGreeting.value        = data.tpl_greeting || '';
+          tplIntro.value           = data.tpl_intro    || '';
+          tplFooter.value          = data.tpl_footer   || '';
+          tplGreeting.dataset.loaded = '1';
+        }
+
         // Вставить тело письма в iframe
         frame.srcdoc        = data.body_html;
         frame.style.display = '';
@@ -289,6 +355,15 @@
         errDiv.textContent    = 'Ошибка запроса: ' + e;
         errDiv.style.display  = '';
       });
+  }
+
+  btn.addEventListener('click', function () {
+    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal'));
+    // Переключиться на вкладку предпросмотра
+    var tabEl = document.getElementById('tab-preview-btn');
+    if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
+    loadPreview();
+    modal.show();
   });
 
   // ── Отправка из модалки ──────────────────────────────────────────────────
@@ -356,6 +431,66 @@
         errDiv.style.display = '';
       });
   });
+
+  // ── Шаблон письма ────────────────────────────────────────────────────────
+  var btnTplSave  = document.getElementById('btn-tpl-save');
+  var btnTplReset = document.getElementById('btn-tpl-reset');
+  var tplResult   = document.getElementById('tpl-save-result');
+
+  if (btnTplSave) {
+    btnTplSave.addEventListener('click', function () {
+      var payload = {
+        greeting: document.getElementById('tpl-greeting').value,
+        intro:    document.getElementById('tpl-intro').value,
+        footer:   document.getElementById('tpl-footer').value,
+      };
+      tplResult.style.display = 'none';
+      btnTplSave.disabled = true;
+
+      fetch('{{ url_for("save_email_template") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function () {
+          btnTplSave.disabled = false;
+          tplResult.innerHTML = '<span class="text-success">&#10003; Сохранено. Обновляю предпросмотр…</span>';
+          tplResult.style.display = '';
+          // Переключиться на предпросмотр и перезагрузить
+          bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-preview-btn')).show();
+          loadPreview();
+        })
+        .catch(function (e) {
+          btnTplSave.disabled = false;
+          tplResult.innerHTML = '<span class="text-danger">Ошибка: ' + escHtml(String(e)) + '</span>';
+          tplResult.style.display = '';
+        });
+    });
+  }
+
+  if (btnTplReset) {
+    btnTplReset.addEventListener('click', function () {
+      fetch('{{ url_for("get_email_template") }}?_reset=1')
+        .then(function (r) { return r.json(); })
+        .then(function () {
+          // Отправить сброс на сервер (пустые поля = дефолт)
+          return fetch('{{ url_for("save_email_template") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ greeting: null, intro: null, footer: null }),
+          });
+        })
+        .then(function (r) { return r.json(); })
+        .then(function () {
+          // Сбросить поля и перезагрузить предпросмотр
+          var tplGreeting = document.getElementById('tpl-greeting');
+          tplGreeting.dataset.loaded = '';
+          bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-preview-btn')).show();
+          loadPreview();
+        });
+    });
+  }
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')

@@ -238,6 +238,40 @@ def save_recipients():
 
 
 # ---------------------------------------------------------------------------
+# Шаблон письма
+# ---------------------------------------------------------------------------
+
+@app.route("/email-template", methods=["GET"])
+@login_required
+def get_email_template():
+    return jsonify({
+        "greeting": session.get("tpl_greeting", mailer.DEFAULT_GREETING),
+        "intro":    session.get("tpl_intro",    mailer.DEFAULT_INTRO),
+        "footer":   session.get("tpl_footer",   mailer.DEFAULT_FOOTER),
+    })
+
+
+@app.route("/email-template", methods=["POST"])
+@login_required
+def save_email_template():
+    body = request.get_json(silent=True) or {}
+    # None означает сброс к дефолту
+    session["tpl_greeting"] = body["greeting"] if body.get("greeting") is not None else None
+    session["tpl_intro"]    = body["intro"]    if body.get("intro")    is not None else None
+    session["tpl_footer"]   = body["footer"]   if body.get("footer")   is not None else None
+    return jsonify({"ok": True})
+
+
+def _tpl_kwargs():
+    """Возвращает kwargs шаблона письма из сессии."""
+    return {
+        "greeting": session.get("tpl_greeting"),
+        "intro":    session.get("tpl_intro"),
+        "footer":   session.get("tpl_footer"),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Предпросмотр письма
 # ---------------------------------------------------------------------------
 
@@ -250,7 +284,6 @@ def preview():
     pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
     dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
     table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
-    body_html = mailer.build_html_body(table_html)
 
     recipients_list = session.get("recipients", [])
 
@@ -261,7 +294,10 @@ def preview():
         "from_addr": config.SMTP_FROM or smtp_user,
         "to": recipients_list,
         "subject": subject,
-        "body_html": mailer.build_html_body(table_html, period=period),
+        "body_html": mailer.build_html_body(table_html, period=period, **_tpl_kwargs()),
+        "tpl_greeting": session.get("tpl_greeting", mailer.DEFAULT_GREETING),
+        "tpl_intro":    session.get("tpl_intro",    mailer.DEFAULT_INTRO),
+        "tpl_footer":   session.get("tpl_footer",   mailer.DEFAULT_FOOTER),
     })
 
 
@@ -300,6 +336,7 @@ def send():
     if subject_override is None:
         subject_override = f"{config.MAIL_SUBJECT} ({period})" if period else config.MAIL_SUBJECT
 
+    tpl = _tpl_kwargs()
     results = {}
     for email in recipients_list:
         results[email] = mailer.send_smtp(
@@ -312,6 +349,7 @@ def send():
             from_addr=from_addr,
             subject=subject_override,
             period=period,
+            **tpl,
         )
 
     return jsonify(results)
@@ -323,4 +361,4 @@ def send():
 
 if __name__ == "__main__":
     os.makedirs(app.config["SESSION_FILE_DIR"], exist_ok=True)
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5001, debug=True)
