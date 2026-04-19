@@ -299,7 +299,7 @@
 
         <div class="tab-content">
           {# Preview tab #}
-          <div class="tab-pane active" data-tab="preview" style="padding:14px 16px;">
+          <div class="ts-tab-pane" data-tab="preview" style="padding:14px 16px;">
             <div class="email-preview-meta">
               <div class="row-m">
                 <label class="form-label">От кого</label>
@@ -323,7 +323,7 @@
           </div>
 
           {# Template tab #}
-          <div class="tab-pane" data-tab="template" style="padding:16px 18px;max-width:640px;display:none;">
+          <div class="ts-tab-pane" data-tab="template" style="padding:16px 18px;max-width:640px;display:none;">
             <p style="font-size:0.82rem;color:var(--corp-muted);">
               Во вступлении доступна подстановка <code>{period_str}</code>.
             </p>
@@ -622,7 +622,7 @@
       document.querySelectorAll('#preview-tabs .nav-link').forEach(function(b){
         b.classList.toggle('active', b.dataset.tab === key);
       });
-      document.querySelectorAll('.tab-pane[data-tab]').forEach(function(p){
+      document.querySelectorAll('.ts-tab-pane[data-tab]').forEach(function(p){
         p.style.display = p.dataset.tab === key ? '' : 'none';
       });
     });

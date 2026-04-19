@@ -13,6 +13,7 @@
 #
 # Drop-in compatible with existing parser.py, ad_fetcher.py, mailer.py, config.py.
 
+import io
 import json
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -41,7 +42,7 @@ def _get_pivot_df():
     raw = session.get("pivot_json")
     if not raw:
         return None
-    return pd.read_json(raw, orient="split")
+    return pd.read_json(io.StringIO(raw), orient="split")
 
 
 def _build_recipients_meta(pivot_df, teamleads):
@@ -143,8 +144,8 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = request.form.get("username", "").strip()
-        pwd = request.form.get("password", "")
+        user = request.form.get("ad_user", "").strip()
+        pwd = request.form.get("ad_password", "")
         if not user or not pwd:
             flash("Введите логин и пароль.", "danger")
             return render_template("login.html")
@@ -183,9 +184,9 @@ def dashboard():
         initial_step = 2
         completed = [1]
     else:
-        # Stay at step 3 until user clicks Next; safest default
-        initial_step = 3
-        completed = [1, 2]
+        # Land on step 2 (pivot review) — user must click Next to proceed
+        initial_step = 2
+        completed = [1]
 
     initial_state = {
         "urls": {
@@ -348,9 +349,10 @@ def preview():
         return jsonify(error="Сначала загрузите Excel.")
 
     period = session.get("period") or ""
-    greeting = session.get("tpl_greeting", mailer.DEFAULT_GREETING)
-    intro = session.get("tpl_intro", mailer.DEFAULT_INTRO)
-    footer = session.get("tpl_footer", mailer.DEFAULT_FOOTER)
+    tpl = mailer.load_template()
+    greeting = session.get("tpl_greeting") or tpl["greeting"]
+    intro    = session.get("tpl_intro")    or tpl["intro"]
+    footer   = session.get("tpl_footer")   or tpl["footer"]
 
     table_html = pivot_to_html(pivot_df)
     body_html = mailer.build_html_body(
@@ -378,25 +380,32 @@ def email_template():
     if not _require_login():
         return jsonify(error="not logged in"), 401
 
+    tpl = mailer.load_template()
     if request.method == "GET":
         return jsonify(
-            greeting=session.get("tpl_greeting", mailer.DEFAULT_GREETING),
-            intro=session.get("tpl_intro", mailer.DEFAULT_INTRO),
-            footer=session.get("tpl_footer", mailer.DEFAULT_FOOTER),
+            greeting=session.get("tpl_greeting") or tpl["greeting"],
+            intro=session.get("tpl_intro")        or tpl["intro"],
+            footer=session.get("tpl_footer")      or tpl["footer"],
         )
 
     data = request.get_json(silent=True) or {}
-    for key, sess_key, default in (
-        ("greeting", "tpl_greeting", mailer.DEFAULT_GREETING),
-        ("intro",    "tpl_intro",    mailer.DEFAULT_INTRO),
-        ("footer",   "tpl_footer",   mailer.DEFAULT_FOOTER),
+    save_kwargs = {}
+    for key, sess_key in (
+        ("greeting", "tpl_greeting"),
+        ("intro",    "tpl_intro"),
+        ("footer",   "tpl_footer"),
     ):
         if key in data:
             val = data[key]
             if val is None:
+                # Reset to default — remove from session and clear file key
                 session.pop(sess_key, None)
+                save_kwargs[key] = getattr(mailer, f"DEFAULT_{key.upper()}")
             else:
                 session[sess_key] = str(val)
+                save_kwargs[key] = str(val)
+    if save_kwargs:
+        mailer.save_template(**save_kwargs)
     return jsonify(ok=True)
 
 
@@ -419,9 +428,10 @@ def send():
     )
 
     period = session.get("period") or ""
-    greeting = session.get("tpl_greeting", mailer.DEFAULT_GREETING)
-    intro = session.get("tpl_intro", mailer.DEFAULT_INTRO)
-    footer = session.get("tpl_footer", mailer.DEFAULT_FOOTER)
+    tpl = mailer.load_template()
+    greeting = session.get("tpl_greeting") or tpl["greeting"]
+    intro    = session.get("tpl_intro")    or tpl["intro"]
+    footer   = session.get("tpl_footer")   or tpl["footer"]
     if "{period_str}" in subject:
         subject = subject.format(period_str=period)
 

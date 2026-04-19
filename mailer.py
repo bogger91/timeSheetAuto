@@ -6,11 +6,47 @@
   - Outlook COM (CLI/GUI): create_draft(), send() — через win32com, только Windows.
 """
 import os
+import json
 import smtplib
 import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import config
+
+_TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "template.json")
+
+
+def load_template() -> dict:
+    """Загружает шаблон из template.json. Отсутствующие ключи заменяются дефолтами."""
+    try:
+        with open(_TEMPLATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+    return {
+        "greeting": data.get("greeting", DEFAULT_GREETING),
+        "intro":    data.get("intro",    DEFAULT_INTRO),
+        "footer":   data.get("footer",   DEFAULT_FOOTER),
+    }
+
+
+def save_template(greeting: str | None = None,
+                  intro: str | None = None,
+                  footer: str | None = None) -> None:
+    """Сохраняет шаблон в template.json. None — не менять поле."""
+    try:
+        with open(_TEMPLATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {}
+    if greeting is not None:
+        data["greeting"] = greeting
+    if intro is not None:
+        data["intro"] = intro
+    if footer is not None:
+        data["footer"] = footer
+    with open(_TEMPLATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def _get_outlook():
@@ -35,9 +71,12 @@ def build_html_body(table_html: str, period: str | None = None,
     today = datetime.date.today().strftime("%d.%m.%Y")
     period_str = f" за период <b>{period}</b>" if period else f" по состоянию на <b>{today}</b>"
 
-    greeting_text = greeting if greeting is not None else DEFAULT_GREETING
-    intro_text = (intro if intro is not None else DEFAULT_INTRO).replace("{period_str}", period_str)
-    footer_text = footer if footer is not None else DEFAULT_FOOTER
+    def nl2br(text: str) -> str:
+        return text.replace("\r\n", "<br>").replace("\n", "<br>")
+
+    greeting_text = nl2br(greeting if greeting is not None else DEFAULT_GREETING)
+    intro_text = nl2br((intro if intro is not None else DEFAULT_INTRO).replace("{period_str}", period_str))
+    footer_text = nl2br(footer if footer is not None else DEFAULT_FOOTER)
 
     return f"""
 <html>

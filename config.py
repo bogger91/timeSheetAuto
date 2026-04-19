@@ -8,6 +8,8 @@ def get(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 
+SECRET_KEY = get("SECRET_KEY", os.urandom(32).hex())
+
 EXCEL_PATH = get("EXCEL_PATH", "")
 COL_GROUP = get("COL_GROUP", "Управление")
 COL_DEPT  = get("COL_DEPT",  "Отдел")
