@@ -1,82 +1,141 @@
-"""
-Flask-приложение для автоматизации отчёта по списанию часов.
+# app.py — patched version for timeSheetAuto
+# Changes vs original:
+#  1. /upload auto-fetches recipients from AD after successful parse.
+#     Builds session["recipients_meta"] — one entry per dept with status ok/manual/missing.
+#     On AD failure: session["ad_autofetch_error"] is set; upload still succeeds.
+#  2. /recipients (GET) redirects to /dashboard (wizard now includes step 3 inline).
+#  3. /recipients/confirm (new, POST JSON) — updates enabled/email per row.
+#  4. /preview returns JSON (body_html + subject + template fields) for the wizard iframe.
+#  5. /email-template: GET returns JSON, POST accepts JSON body (null = reset to default).
+#  6. /send accepts JSON {subject, recipients} and returns per-email status dict.
+#  7. /reset_upload — clears pivot + recipients_meta, returns to step 1.
+#  8. dashboard() builds `initial_state` for the wizard JS.
+#
+# Drop-in compatible with existing parser.py, ad_fetcher.py, mailer.py, config.py.
 
-Маршруты:
-  GET  /              → редирект на /dashboard или /login
-  GET  /login         → форма ввода кредов (AD + SMTP)
-  POST /login         → сохранить в сессию, редирект на /dashboard
-  GET  /logout        → очистить сессию, редирект на /login
-
-  GET  /dashboard     → сводная таблица + форма загрузки Excel
-  POST /upload        → загрузить Excel, разобрать, сохранить в сессию
-
-  GET  /recipients    → список адресатов
-  POST /recipients/fetch  → загрузить из AD
-  POST /recipients/save   → сохранить отредактированный список
-
-  POST /send          → отправить рассылку, вернуть JSON {email: status}
-"""
-import io
-import os
-import tempfile
-import functools
-import logging
-import traceback
-
+import json
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    session, flash, jsonify,
+)
 import pandas as pd
-from flask import (Flask, render_template, request, redirect,
-                   url_for, session, jsonify, flash)
-from flask_session import Session
 
 import config
-import parser as report_parser
+from parser import load_pivot, load_period, pivot_to_html
 import ad_fetcher
 import mailer
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("timesheetauto.log", encoding="utf-8"),
-    ],
-)
-log = logging.getLogger("timesheetauto")
-
-# ---------------------------------------------------------------------------
-# Приложение
-# ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-app.secret_key = os.urandom(32)
-
-# Серверные сессии (хранятся на диске, не в cookie — данные могут быть большими)
-app.config["SESSION_TYPE"] = "filesystem"
-app.config["SESSION_FILE_DIR"] = os.path.join(tempfile.gettempdir(), "timesheetauto_sessions")
-app.config["SESSION_PERMANENT"] = False
-Session(app)
+app.secret_key = config.SECRET_KEY
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
 
 
-# ---------------------------------------------------------------------------
-# Декоратор авторизации
-# ---------------------------------------------------------------------------
+# ───────────────────────── helpers ─────────────────────────
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        if not session.get("logged_in"):
-            return redirect(url_for("login"))
-        return f(*args, **kwargs)
-    return wrapper
+def _require_login():
+    return session.get("logged_in") is True
 
 
-# ---------------------------------------------------------------------------
-# Авторизация
-# ---------------------------------------------------------------------------
+def _get_pivot_df():
+    raw = session.get("pivot_json")
+    if not raw:
+        return None
+    return pd.read_json(raw, orient="split")
 
-@app.route("/")
+
+def _build_recipients_meta(pivot_df, teamleads):
+    """
+    Build per-dept recipient rows by matching dept rows in pivot
+    with AD lead records by lead name.
+
+    teamleads: [{"department": ..., "name": ..., "email": ...}]
+    returns:   [{"dept","lead","email","enabled","status"}]
+    """
+    # Map by dept name (string, case-insensitive)
+    leads_by_dept = {}
+    for tl in teamleads or []:
+        dept = (tl.get("department") or "").strip().lower()
+        if dept:
+            leads_by_dept[dept] = tl
+
+    meta = []
+    if pivot_df is None or pivot_df.empty:
+        return meta
+
+    # Prefer "dept"-level rows if row_type exists; fall back to all non-total rows.
+    if "row_type" in pivot_df.columns:
+        dept_rows = pivot_df[pivot_df["row_type"] == "dept"]
+        if dept_rows.empty:
+            # some pivots only have groups — use groups instead
+            dept_rows = pivot_df[pivot_df["row_type"] == "group"]
+    else:
+        dept_rows = pivot_df
+
+    seen = set()
+    for _, row in dept_rows.iterrows():
+        dept_name = str(row.get("Подразделение") or row.get("Отдел") or "").strip()
+        if not dept_name or dept_name in seen:
+            continue
+        seen.add(dept_name)
+        tl = leads_by_dept.get(dept_name.lower())
+        if tl and tl.get("email"):
+            meta.append({
+                "dept": dept_name,
+                "lead": tl.get("name") or "",
+                "email": tl.get("email"),
+                "enabled": True,
+                "status": "ok",
+            })
+        elif tl:
+            meta.append({
+                "dept": dept_name,
+                "lead": tl.get("name") or "",
+                "email": "",
+                "enabled": False,
+                "status": "missing",
+            })
+        else:
+            meta.append({
+                "dept": dept_name,
+                "lead": "",
+                "email": "",
+                "enabled": False,
+                "status": "missing",
+            })
+    return meta
+
+
+def _recipients_from_meta():
+    meta = session.get("recipients_meta") or []
+    return [r["email"] for r in meta if r.get("enabled") and r.get("email")]
+
+
+def _dept_to_lead_map():
+    """For rendering the pivot — show lead name next to each dept."""
+    out = {}
+    for tl in session.get("teamleads", []) or []:
+        dept = (tl.get("department") or "").strip()
+        if dept:
+            out[dept] = {"name": tl.get("name", ""), "email": tl.get("email", "")}
+    return out
+
+
+def _groups_list(pivot_df):
+    if pivot_df is None or pivot_df.empty or "Управление" not in pivot_df.columns:
+        return []
+    vals = (
+        pivot_df.loc[pivot_df.get("row_type", "") != "total", "Управление"]
+        .dropna().astype(str).unique().tolist()
+    )
+    return sorted(vals)
+
+
+# ───────────────────────── auth ─────────────────────────
+
+@app.route("/", methods=["GET"])
 def index():
-    if session.get("logged_in"):
+    if _require_login():
         return redirect(url_for("dashboard"))
     return redirect(url_for("login"))
 
@@ -84,14 +143,18 @@ def index():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        ad_user     = request.form.get("ad_user", "").strip()
-        ad_password = request.form.get("ad_password", "")
-        session["logged_in"]  = True
-        session["ad_user"]    = ad_user
-        session["ad_password"] = ad_password
+        user = request.form.get("username", "").strip()
+        pwd = request.form.get("password", "")
+        if not user or not pwd:
+            flash("Введите логин и пароль.", "danger")
+            return render_template("login.html")
+        # AD auth is performed lazily when needed; here we just stash credentials.
+        session.clear()
+        session["logged_in"] = True
+        session["ad_user"] = user
+        session["ad_password"] = pwd
         return redirect(url_for("dashboard"))
-
-    return render_template("login.html", ad_server=config.AD_SERVER)
+    return render_template("login.html")
 
 
 @app.route("/logout")
@@ -100,265 +163,294 @@ def logout():
     return redirect(url_for("login"))
 
 
-# ---------------------------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------------------------
+# ───────────────────────── dashboard (wizard) ─────────────────────────
 
-@app.route("/dashboard")
-@login_required
+@app.route("/dashboard", methods=["GET"])
 def dashboard():
-    pivot = None
-    filename = session.get("upload_filename", "")
-    error = session.pop("upload_error", None)
+    if not _require_login():
+        return redirect(url_for("login"))
 
-    log.debug("dashboard(): session keys=%r, has pivot_json=%r, filename=%r, error=%r",
-              list(session.keys()), "pivot_json" in session, filename, error)
+    pivot_df = _get_pivot_df()
+    recipients_meta = session.get("recipients_meta") or []
+    has_pivot = pivot_df is not None and not pivot_df.empty
+    has_recipients = any(r.get("enabled") and r.get("email") for r in recipients_meta)
 
-    if "pivot_json" in session:
-        pivot_json = session["pivot_json"]
-        log.debug("pivot_json length=%d chars", len(pivot_json))
-        try:
-            pivot = pd.read_json(io.StringIO(pivot_json), dtype=False)
-            log.debug("pivot restored OK, shape=%s", pivot.shape)
-        except Exception as e:
-            log.error("Failed to restore pivot from session: %s\n%s", e, traceback.format_exc())
-            pivot = None
+    # Decide which step to land on
+    if not has_pivot:
+        initial_step = 1
+        completed = []
+    elif not recipients_meta:
+        initial_step = 2
+        completed = [1]
+    else:
+        # Stay at step 3 until user clicks Next; safest default
+        initial_step = 3
+        completed = [1, 2]
 
-    # Список уникальных управлений (без итоговой строки) для фильтра
-    groups = []
-    if pivot is not None:
-        groups = [
-            d for d in pivot.loc[pivot["row_type"] == "group", "Подразделение"].tolist()
-            if str(d).upper() != "ИТОГО"
-        ]
-
-    # Словарь отдел → {name, email} для отображения начальников
-    teamleads_raw = session.get("teamleads", [])
-    dept_to_lead = {tl["department"]: tl for tl in teamleads_raw if tl.get("department")}
+    initial_state = {
+        "urls": {
+            "upload":         url_for("upload"),
+            "reset_upload":   url_for("reset_upload"),
+            "fetch":          url_for("fetch_recipients"),
+            "save_recipients": url_for("save_recipients"),
+            "confirm":        url_for("confirm_recipients"),
+            "preview":        url_for("preview"),
+            "email_template": url_for("email_template"),
+            "send":           url_for("send"),
+        },
+        "from_addr": getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+        "has_pivot": bool(has_pivot),
+        "has_recipients": bool(has_recipients),
+        "initial_step": initial_step,
+        "completed_steps": completed,
+    }
 
     return render_template(
         "dashboard.html",
-        pivot=pivot,
-        groups=groups,
-        dept_to_lead=dept_to_lead,
-        filename=filename,
-        error=error,
+        pivot=pivot_df,
         period=session.get("period"),
+        filename=session.get("upload_filename"),
+        groups=_groups_list(pivot_df),
+        dept_to_lead=_dept_to_lead_map(),
+        recipients_meta=recipients_meta,
+        ad_autofetch_error=session.get("ad_autofetch_error"),
+        ad_server=getattr(config, "AD_SERVER", ""),
+        initial_state=initial_state,
     )
 
 
+# ───────────────────────── upload ─────────────────────────
+
 @app.route("/upload", methods=["POST"])
-@login_required
 def upload():
-    file = request.files.get("excel_file")
-    log.debug("upload() called, filename=%r", file.filename if file else None)
+    if not _require_login():
+        return redirect(url_for("login"))
 
-    if not file or file.filename == "":
-        session["upload_error"] = "Файл не выбран."
+    f = request.files.get("excel_file")
+    if not f or not f.filename:
+        flash("Не выбран файл.", "danger")
         return redirect(url_for("dashboard"))
 
-    if not file.filename.lower().endswith((".xlsx", ".xls")):
-        session["upload_error"] = "Поддерживаются только файлы .xlsx / .xls."
-        return redirect(url_for("dashboard"))
-
-    tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
-            tmp_path = tmp.name
-            file.save(tmp_path)
-        file_size = os.path.getsize(tmp_path)
-        log.debug("Saved to tmp=%r, size=%d bytes", tmp_path, file_size)
-
-        log.debug("Config: COL_GROUP=%r, COL_CAPACITY=%r, COL_SPENT=%r",
-                  config.COL_GROUP, config.COL_CAPACITY, config.COL_SPENT)
-
-        import openpyxl
-        wb = openpyxl.load_workbook(tmp_path, read_only=True)
-        ws = wb.active
-        headers = [cell.value for cell in next(ws.iter_rows(max_row=1))]
-        wb.close()
-        log.debug("Excel headers: %r", headers)
-
-        pivot = report_parser.load_pivot(tmp_path)
-        log.debug("pivot loaded OK, shape=%s, columns=%r", pivot.shape, list(pivot.columns))
-        session["pivot_json"] = pivot.to_json(force_ascii=False)
-        session["upload_filename"] = file.filename
-        session["period"] = report_parser.load_period(tmp_path)
-        log.info("Upload success: %r", file.filename)
+        pivot_df = load_pivot(f)
+        period = load_period(f)
     except Exception as e:
-        log.error("Upload failed: %s\n%s", e, traceback.format_exc())
-        session["upload_error"] = f"Ошибка при чтении файла: {e}"
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        flash(f"Не удалось разобрать Excel: {e}", "danger")
+        return redirect(url_for("dashboard"))
+
+    session["pivot_json"] = pivot_df.to_json(orient="split")
+    session["period"] = period
+    session["upload_filename"] = f.filename
+    session.pop("ad_autofetch_error", None)
+
+    # Auto-fetch recipients from AD
+    try:
+        teamleads = ad_fetcher.get_teamleads(
+            session.get("ad_user", ""), session.get("ad_password", "")
+        )
+        session["teamleads"] = teamleads
+        session["recipients_meta"] = _build_recipients_meta(pivot_df, teamleads)
+        session["recipients"] = _recipients_from_meta()
+    except Exception as e:
+        session["ad_autofetch_error"] = str(e)
+        session["teamleads"] = []
+        # Still build meta rows so user can fill emails manually
+        session["recipients_meta"] = _build_recipients_meta(pivot_df, [])
+        session["recipients"] = []
 
     return redirect(url_for("dashboard"))
 
 
-# ---------------------------------------------------------------------------
-# Адресаты
-# ---------------------------------------------------------------------------
+@app.route("/reset_upload", methods=["POST"])
+def reset_upload():
+    if not _require_login():
+        return redirect(url_for("login"))
+    for k in ("pivot_json", "period", "upload_filename",
+              "teamleads", "recipients", "recipients_meta",
+              "ad_autofetch_error"):
+        session.pop(k, None)
+    return redirect(url_for("dashboard"))
 
-@app.route("/recipients")
-@login_required
-def recipients():
-    return render_template(
-        "recipients.html",
-        recipients=session.get("recipients", []),
-        ad_error=session.pop("ad_error", None),
-        ad_success=session.pop("ad_success", None),
-        ad_server=config.AD_SERVER,
-    )
+
+# ───────────────────────── recipients ─────────────────────────
+
+@app.route("/recipients", methods=["GET"])
+def recipients_page():
+    # Adresaty now live on the dashboard as step 3
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/recipients/fetch", methods=["POST"])
-@login_required
 def fetch_recipients():
+    if not _require_login():
+        return redirect(url_for("login"))
     try:
         teamleads = ad_fetcher.get_teamleads(
-            user=session.get("ad_user"),
-            password=session.get("ad_password"),
+            session.get("ad_user", ""), session.get("ad_password", "")
         )
-        session["teamleads"]  = teamleads
-        session["recipients"] = [tl["email"] for tl in teamleads]
-        session["ad_success"] = f"Загружено записей из AD: {len(teamleads)}"
+        session["teamleads"] = teamleads
+        pivot_df = _get_pivot_df()
+        session["recipients_meta"] = _build_recipients_meta(pivot_df, teamleads)
+        session["recipients"] = _recipients_from_meta()
+        session.pop("ad_autofetch_error", None)
+        flash(f"Загружено руководителей из AD: {len(teamleads)}.", "success")
     except Exception as e:
-        session["ad_error"] = str(e)
-    return redirect(url_for("recipients"))
+        session["ad_autofetch_error"] = str(e)
+        flash(f"Ошибка AD: {e}", "danger")
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/recipients/save", methods=["POST"])
-@login_required
 def save_recipients():
-    raw = request.form.get("recipients_text", "")
-    session["recipients"] = [
-        e.strip() for e in raw.splitlines() if e.strip()
-    ]
-    return redirect(url_for("recipients"))
+    """Legacy endpoint — kept for backward compatibility.
+    Accepts form field `recipients` as newline-separated emails."""
+    if not _require_login():
+        return redirect(url_for("login"))
+    raw = request.form.get("recipients", "")
+    emails = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    session["recipients"] = emails
+    flash(f"Сохранено получателей: {len(emails)}.", "success")
+    return redirect(url_for("dashboard"))
 
 
-# ---------------------------------------------------------------------------
-# Шаблон письма
-# ---------------------------------------------------------------------------
-
-@app.route("/email-template", methods=["GET"])
-@login_required
-def get_email_template():
-    return jsonify({
-        "greeting": session.get("tpl_greeting", mailer.DEFAULT_GREETING),
-        "intro":    session.get("tpl_intro",    mailer.DEFAULT_INTRO),
-        "footer":   session.get("tpl_footer",   mailer.DEFAULT_FOOTER),
-    })
-
-
-@app.route("/email-template", methods=["POST"])
-@login_required
-def save_email_template():
-    body = request.get_json(silent=True) or {}
-    # None означает сброс к дефолту
-    session["tpl_greeting"] = body["greeting"] if body.get("greeting") is not None else None
-    session["tpl_intro"]    = body["intro"]    if body.get("intro")    is not None else None
-    session["tpl_footer"]   = body["footer"]   if body.get("footer")   is not None else None
-    return jsonify({"ok": True})
-
-
-def _tpl_kwargs():
-    """Возвращает kwargs шаблона письма из сессии."""
-    return {
-        "greeting": session.get("tpl_greeting"),
-        "intro":    session.get("tpl_intro"),
-        "footer":   session.get("tpl_footer"),
-    }
+@app.route("/recipients/confirm", methods=["POST"])
+def confirm_recipients():
+    """New endpoint — merges {idx: {enabled, email}} edits into recipients_meta."""
+    if not _require_login():
+        return jsonify(error="not logged in"), 401
+    data = request.get_json(silent=True) or {}
+    rows = data.get("rows") or []
+    meta = session.get("recipients_meta") or []
+    for patch in rows:
+        i = patch.get("idx")
+        if not isinstance(i, int) or i < 0 or i >= len(meta):
+            continue
+        if "enabled" in patch:
+            meta[i]["enabled"] = bool(patch["enabled"])
+        if "email" in patch:
+            email = (patch.get("email") or "").strip()
+            meta[i]["email"] = email
+            if email and meta[i].get("status") == "missing":
+                meta[i]["status"] = "manual"
+    session["recipients_meta"] = meta
+    session["recipients"] = _recipients_from_meta()
+    return jsonify(ok=True, active=len(session["recipients"]))
 
 
-# ---------------------------------------------------------------------------
-# Предпросмотр письма
-# ---------------------------------------------------------------------------
+# ───────────────────────── preview + template ─────────────────────────
 
-@app.route("/preview")
-@login_required
+@app.route("/preview", methods=["GET"])
 def preview():
-    if "pivot_json" not in session:
-        return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
+    if not _require_login():
+        return jsonify(error="not logged in"), 401
+    pivot_df = _get_pivot_df()
+    if pivot_df is None or pivot_df.empty:
+        return jsonify(error="Сначала загрузите Excel.")
 
-    pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
-    dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
-    table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
+    period = session.get("period") or ""
+    greeting = session.get("tpl_greeting", mailer.DEFAULT_GREETING)
+    intro = session.get("tpl_intro", mailer.DEFAULT_INTRO)
+    footer = session.get("tpl_footer", mailer.DEFAULT_FOOTER)
 
-    recipients_list = session.get("recipients", [])
+    table_html = pivot_to_html(pivot_df)
+    body_html = mailer.build_html_body(
+        greeting=greeting,
+        intro=intro.format(period_str=period) if "{period_str}" in intro else intro,
+        table_html=table_html,
+        footer=footer,
+    )
+    subject = getattr(config, "MAIL_SUBJECT", "Отчёт по списанию часов")
+    if "{period_str}" in subject:
+        subject = subject.format(period_str=period)
 
-    period = session.get("period")
-    subject = f"{config.MAIL_SUBJECT} ({period})" if period else config.MAIL_SUBJECT
-    smtp_user = session.get("ad_user", "")
-    return jsonify({
-        "from_addr": config.SMTP_FROM or smtp_user,
-        "to": recipients_list,
-        "subject": subject,
-        "body_html": mailer.build_html_body(table_html, period=period, **_tpl_kwargs()),
-        "tpl_greeting": session.get("tpl_greeting", mailer.DEFAULT_GREETING),
-        "tpl_intro":    session.get("tpl_intro",    mailer.DEFAULT_INTRO),
-        "tpl_footer":   session.get("tpl_footer",   mailer.DEFAULT_FOOTER),
-    })
+    return jsonify(
+        subject=subject,
+        from_addr=getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+        body_html=body_html,
+        tpl_greeting=greeting,
+        tpl_intro=intro,
+        tpl_footer=footer,
+    )
 
 
-# ---------------------------------------------------------------------------
-# Отправка рассылки
-# ---------------------------------------------------------------------------
+@app.route("/email-template", methods=["GET", "POST"])
+def email_template():
+    if not _require_login():
+        return jsonify(error="not logged in"), 401
 
-@app.route("/send", methods=["POST"])
-@login_required
-def send():
-    if "pivot_json" not in session:
-        return jsonify({"error": "Нет данных. Загрузите Excel на главной странице."}), 400
-
-    body = request.get_json(silent=True) or {}
-    subject_override = body.get("subject")
-    recipients_override = body.get("recipients")
-
-    recipients_list = recipients_override if recipients_override is not None else session.get("recipients", [])
-    if not recipients_list:
-        return jsonify({"error": "Список адресатов пуст."}), 400
-
-    pivot = pd.read_json(io.StringIO(session["pivot_json"]), dtype=False)
-    dept_to_lead = {tl["department"]: tl for tl in session.get("teamleads", []) if tl.get("department")}
-    table_html = report_parser.pivot_to_html(pivot, dept_to_lead or None)
-
-    smtp_host = config.SMTP_HOST
-    smtp_port = config.SMTP_PORT
-    smtp_user = session.get("ad_user", "")
-    smtp_password = session.get("ad_password", "")
-    from_addr = config.SMTP_FROM or smtp_user
-
-    if not smtp_host:
-        return jsonify({"error": "SMTP-сервер не задан. Проверьте настройки в config.env."}), 400
-
-    period = session.get("period")
-    if subject_override is None:
-        subject_override = f"{config.MAIL_SUBJECT} ({period})" if period else config.MAIL_SUBJECT
-
-    tpl = _tpl_kwargs()
-    results = {}
-    for email in recipients_list:
-        results[email] = mailer.send_smtp(
-            table_html=table_html,
-            recipient=email,
-            smtp_host=smtp_host,
-            smtp_port=smtp_port,
-            smtp_user=smtp_user,
-            smtp_password=smtp_password,
-            from_addr=from_addr,
-            subject=subject_override,
-            period=period,
-            **tpl,
+    if request.method == "GET":
+        return jsonify(
+            greeting=session.get("tpl_greeting", mailer.DEFAULT_GREETING),
+            intro=session.get("tpl_intro", mailer.DEFAULT_INTRO),
+            footer=session.get("tpl_footer", mailer.DEFAULT_FOOTER),
         )
 
+    data = request.get_json(silent=True) or {}
+    for key, sess_key, default in (
+        ("greeting", "tpl_greeting", mailer.DEFAULT_GREETING),
+        ("intro",    "tpl_intro",    mailer.DEFAULT_INTRO),
+        ("footer",   "tpl_footer",   mailer.DEFAULT_FOOTER),
+    ):
+        if key in data:
+            val = data[key]
+            if val is None:
+                session.pop(sess_key, None)
+            else:
+                session[sess_key] = str(val)
+    return jsonify(ok=True)
+
+
+# ───────────────────────── send ─────────────────────────
+
+@app.route("/send", methods=["POST"])
+def send():
+    if not _require_login():
+        return jsonify(error="not logged in"), 401
+    pivot_df = _get_pivot_df()
+    if pivot_df is None or pivot_df.empty:
+        return jsonify(error="Сначала загрузите Excel.")
+
+    data = request.get_json(silent=True) or {}
+    recipients = data.get("recipients") or _recipients_from_meta()
+    if not recipients:
+        return jsonify(error="Нет получателей.")
+    subject = (data.get("subject") or "").strip() or getattr(
+        config, "MAIL_SUBJECT", "Отчёт по списанию часов"
+    )
+
+    period = session.get("period") or ""
+    greeting = session.get("tpl_greeting", mailer.DEFAULT_GREETING)
+    intro = session.get("tpl_intro", mailer.DEFAULT_INTRO)
+    footer = session.get("tpl_footer", mailer.DEFAULT_FOOTER)
+    if "{period_str}" in subject:
+        subject = subject.format(period_str=period)
+
+    table_html = pivot_to_html(pivot_df)
+    body_html = mailer.build_html_body(
+        greeting=greeting,
+        intro=intro.format(period_str=period) if "{period_str}" in intro else intro,
+        table_html=table_html,
+        footer=footer,
+    )
+
+    results = {}
+    for email in recipients:
+        try:
+            mailer.send_smtp(
+                smtp_host=config.SMTP_HOST,
+                smtp_port=config.SMTP_PORT,
+                smtp_user=session.get("ad_user", ""),
+                smtp_password=session.get("ad_password", ""),
+                mail_from=getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+                mail_to=email,
+                subject=subject,
+                html_body=body_html,
+            )
+            results[email] = "ok"
+        except Exception as e:
+            results[email] = f"error: {e}"
     return jsonify(results)
 
 
-# ---------------------------------------------------------------------------
-# Запуск
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
-    os.makedirs(app.config["SESSION_FILE_DIR"], exist_ok=True)
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,501 +1,766 @@
 {% extends "base.html" %}
-{% block title %}Данные — TimeSheet Auto{% endblock %}
+{% block title %}Рассылка — TimeSheet Auto{% endblock %}
 
 {% block content %}
 
-<div class="toolbar-strip mb-3">
-  <h5 class="mb-0 me-auto" style="font-size:0.85rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--corp-navy);">Сводная таблица списания</h5>
-  <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data"
-        class="d-flex align-items-center gap-2">
-    <input type="file" name="excel_file" accept=".xlsx,.xls"
-           class="form-control form-control-sm" style="max-width:260px;" required>
-    <button type="submit" class="btn btn-sm btn-primary text-nowrap">
-      Загрузить Excel
-    </button>
-  </form>
-</div>
+<div class="proto-shell">
 
-{% if error %}
-  <div class="alert alert-danger alert-dismissible fade show" role="alert">
-    {{ error }}
-    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-  </div>
-{% endif %}
-
-{% if pivot is not none %}
-
-  {% if period %}
-  <div class="alert alert-info py-2 px-3 mb-2" style="font-size:0.85rem;">
-    Период списания: <strong>{{ period }}</strong>
-  </div>
-  {% endif %}
-
-  <div class="toolbar-strip">
-    {% if filename %}
-      <span class="badge bg-secondary">{{ filename }}</span>
-    {% endif %}
-    <div class="d-flex align-items-center gap-2">
-      <label class="form-label mb-0 text-nowrap">Управление:</label>
-      <select id="group-filter" class="form-select form-select-sm" style="max-width:300px;">
-        <option value="">— все —</option>
-        {% for g in groups %}
-          <option value="{{ g }}">{{ g }}</option>
-        {% endfor %}
-      </select>
+  {# ─────────── Sidebar stepper ─────────── #}
+  <aside class="stepper">
+    <div class="stepper-head">
+      <h6>Период списания</h6>
+      <div class="period {% if not period %}empty{% endif %}">
+        {{ period or '— загрузите Excel —' }}
+      </div>
     </div>
-    {% if not dept_to_lead %}
-      <span class="badge bg-warning text-dark ms-1" title="Загрузите адресатов из AD, чтобы видеть ФИО начальников">
-        ФИО не загружены
-      </span>
+    <ul class="step-list" id="step-list">
+      {% set steps = [
+        ('Загрузить Excel',    'Выгрузка из FineBI'),
+        ('Проверить таблицу',  'Сводная по управлениям'),
+        ('Адресаты из AD',     'Руководители отделов'),
+        ('Предпросмотр письма','Тема, тело, подпись'),
+        ('Отправить',          'Массовая рассылка'),
+      ] %}
+      {% for label, sub in steps %}
+      <li class="step-item" data-step="{{ loop.index }}">
+        <span class="step-circle">{{ loop.index }}</span>
+        <div class="step-label">{{ label }}</div>
+        <div class="step-sub">{{ sub }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </aside>
+
+  {# ─────────── Main panel ─────────── #}
+  <main class="main-panel">
+
+    {# Flash / errors #}
+    {% if error %}
+      <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
     {% endif %}
-    <a href="{{ url_for('recipients') }}" class="btn btn-sm btn-success ms-auto">
-      Перейти к рассылке &rarr;
-    </a>
-    <button id="btn-preview" class="btn btn-sm btn-outline-secondary" type="button">
-      Предпросмотр письма
-    </button>
-  </div>
 
-  <div class="table-responsive">
-    <table class="table table-bordered" id="pivot-table">
-      <thead>
-        <tr>
-          <th>Подразделение</th>
-          <th>Начальник</th>
-          <th class="text-end">Capacity, ч</th>
-          <th class="text-end">Потрачено, ч</th>
-          <th class="text-end">% списания</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for _, row in pivot.iterrows() %}
-          {% set rtype = row['row_type'] %}
-          {% set pct   = row['% списания'] %}
+    {# ───── Step 1: Upload ───── #}
+    <section class="wizard-step" data-step="1">
+      <div class="step-head">
+        <span class="step-badge">1</span>
+        <h2 class="step-title">Загрузите выгрузку из FineBI</h2>
+      </div>
+      <p class="step-help">Файл <code>.xlsx</code> со столбцами: Управление, Отдел, Capacity, Потрачено. Файл остаётся только в сессии.</p>
 
-          {% if rtype == 'total' %}
-            {# ─── Итоговая строка ─── #}
-            <tr class="row-total" data-group="">
-              <td colspan="2"><strong>ИТОГО</strong></td>
-              <td class="text-end"><strong>{{ "%.1f"|format(row['Capacity, ч']) }}</strong></td>
-              <td class="text-end"><strong>{{ "%.1f"|format(row['Потрачено, ч']) }}</strong></td>
-              <td class="text-end"><strong>{{ "%.1f"|format(pct) }}%</strong></td>
-            </tr>
-
-          {% elif rtype == 'group' %}
-            {# ─── Строка Управления ─── #}
-            {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
-            <tr class="row-group" data-group="{{ row['Подразделение'] }}">
-              <td>{{ row['Подразделение'] }}</td>
-              <td>
-                {% if lead %}
-                  <span class="lead-name">{{ lead.name }}</span>
-                {% endif %}
-              </td>
-              <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
-              <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
-              <td class="text-end">{{ "%.1f"|format(pct) }}%</td>
-            </tr>
-
-          {% else %}
-            {# ─── Строка Отдела ─── #}
-            {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
-            <tr class="row-dept" data-group="{{ row['Управление'] }}">
-              <td>{{ row['Подразделение'] }}</td>
-              <td>
-                {% if lead %}
-                  <span class="lead-name">{{ lead.name }}</span>
-                {% endif %}
-              </td>
-              <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
-              <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
-              <td class="text-end
-                {% if pct < 80 %}pct-danger
-                {% elif pct < 95 %}pct-warning
-                {% else %}pct-ok{% endif %}">
-                {{ "%.1f"|format(pct) }}%
-              </td>
-            </tr>
-          {% endif %}
-
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-{% else %}
-  <div class="empty-state">
-    <span class="empty-icon">&#128196;</span>
-    <p>Загрузите Excel-выгрузку из FineBI, чтобы увидеть отчёт.</p>
-  </div>
-{% endif %}
-
-{# ── Модальное окно предпросмотра письма ── #}
-<div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-
-      <div class="modal-header py-2">
-        <h6 class="modal-title mb-0" id="previewModalLabel">Предпросмотр письма</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      <div class="step-body">
+        {% if not pivot is not none %}
+          <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data"
+                id="upload-form">
+            <label class="drop-zone" id="drop-zone" for="excel_file">
+              <div class="drop-zone-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"
+                        stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div style="font-size:0.95rem;font-weight:600;color:var(--corp-navy);">
+                Перетащите файл или нажмите
+              </div>
+              <div style="font-size:0.8rem;color:var(--corp-muted);margin-top:4px;">
+                .xlsx или .xls
+              </div>
+              <input type="file" name="excel_file" id="excel_file"
+                     accept=".xlsx,.xls" style="display:none;" required>
+            </label>
+            <div class="d-flex justify-content-end mt-3">
+              <button type="submit" class="btn btn-primary" id="upload-submit" disabled>
+                Загрузить
+              </button>
+            </div>
+          </form>
+        {% else %}
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div style="width:44px;height:44px;border-radius:4px;background:#166534;color:#fff;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;letter-spacing:.05em;">XLSX</div>
+            <div style="flex:1;">
+              <div style="font-weight:600;color:var(--corp-navy);">{{ filename }}</div>
+              <div style="font-size:0.78rem;color:var(--corp-muted);">
+                Период: <strong style="color:var(--corp-text);">{{ period or '—' }}</strong>
+              </div>
+            </div>
+            <form method="post" action="{{ url_for('reset_upload') }}" style="margin:0;">
+              <button type="submit" class="btn btn-sm btn-outline-secondary">Заменить</button>
+            </form>
+          </div>
+          <div style="margin-top:18px;padding:12px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:2px;font-size:0.82rem;color:#166534;">
+            <strong>Готово.</strong> Файл разобран, данные в сессии.
+          </div>
+        {% endif %}
       </div>
 
-      <div class="modal-body p-0">
+      <div class="step-nav">
+        <span></span>
+        {% if pivot is not none %}
+          <button type="button" class="btn btn-primary" data-go="2">Далее: проверить таблицу →</button>
+        {% else %}
+          <span></span>
+        {% endif %}
+      </div>
+    </section>
 
-        {# Вкладки #}
-        <ul class="nav nav-tabs px-3 pt-2" id="previewTabs" role="tablist" style="font-size:0.82rem;">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-preview-btn" data-bs-toggle="tab"
-                    data-bs-target="#tab-preview" type="button" role="tab">Предпросмотр</button>
+    {# ───── Step 2: Pivot ───── #}
+    <section class="wizard-step" data-step="2">
+      <div class="step-head">
+        <span class="step-badge">2</span>
+        <h2 class="step-title">Проверьте сводную таблицу</h2>
+      </div>
+      <p class="step-help">Убедитесь, что данные корректны. При необходимости вернитесь на шаг 1 и замените файл.</p>
+
+      <div class="step-body" style="padding:16px 16px;">
+        {% if pivot is not none %}
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          {% if period %}
+          <span class="meta-pill">
+            <span class="meta-pill-label">Период</span>
+            <strong>{{ period }}</strong>
+          </span>
+          {% endif %}
+          <div style="flex:1;"></div>
+          <label style="font-size:0.75rem;color:var(--corp-muted);text-transform:uppercase;letter-spacing:.05em;">Управление:</label>
+          <select id="group-filter" class="form-select form-select-sm" style="max-width:260px;">
+            <option value="">— все —</option>
+            {% for g in groups %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+          </select>
+        </div>
+
+        <div class="pivot-wrap">
+          <table class="table table-bordered" id="pivot-table">
+            <thead>
+              <tr>
+                <th>Подразделение</th>
+                <th>Начальник</th>
+                <th class="text-end">Capacity, ч</th>
+                <th class="text-end">Потрачено, ч</th>
+                <th class="text-end">% списания</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for _, row in pivot.iterrows() %}
+                {% set rtype = row['row_type'] %}
+                {% set pct   = row['% списания'] %}
+                {% if rtype == 'total' %}
+                  <tr class="row-total" data-group="">
+                    <td colspan="2"><strong>ИТОГО</strong></td>
+                    <td class="text-end"><strong>{{ "%.1f"|format(row['Capacity, ч']) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.1f"|format(row['Потрачено, ч']) }}</strong></td>
+                    <td class="text-end"><strong>{{ "%.1f"|format(pct) }}%</strong></td>
+                  </tr>
+                {% elif rtype == 'group' %}
+                  {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
+                  <tr class="row-group" data-group="{{ row['Подразделение'] }}">
+                    <td>{{ row['Подразделение'] }}</td>
+                    <td>{% if lead %}<span class="lead-name">{{ lead.name }}</span>{% endif %}</td>
+                    <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
+                    <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
+                    <td class="text-end">{{ "%.1f"|format(pct) }}%</td>
+                  </tr>
+                {% else %}
+                  {% set lead = dept_to_lead.get(row['Подразделение'], {}) %}
+                  <tr class="row-dept" data-group="{{ row['Управление'] }}">
+                    <td>{{ row['Подразделение'] }}</td>
+                    <td>{% if lead %}<span class="lead-name">{{ lead.name }}</span>{% endif %}</td>
+                    <td class="text-end">{{ "%.1f"|format(row['Capacity, ч']) }}</td>
+                    <td class="text-end">{{ "%.1f"|format(row['Потрачено, ч']) }}</td>
+                    <td class="text-end {% if pct < 80 %}pct-danger{% elif pct < 95 %}pct-warning{% else %}pct-ok{% endif %}">
+                      {{ "%.1f"|format(pct) }}%
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="text-muted">Сначала загрузите Excel (шаг 1).</p>
+        {% endif %}
+      </div>
+
+      <div class="step-nav">
+        <button type="button" class="btn btn-outline-secondary" data-go="1">← Назад</button>
+        <button type="button" class="btn btn-primary" data-go="3" {% if pivot is none %}disabled{% endif %}>
+          Далее: адресаты →
+        </button>
+      </div>
+    </section>
+
+    {# ───── Step 3: Recipients ───── #}
+    <section class="wizard-step" data-step="3">
+      <div class="step-head">
+        <span class="step-badge">3</span>
+        <h2 class="step-title">Подтвердите адресатов</h2>
+      </div>
+      <p class="step-help">Адресаты получены из Active Directory по ФИО начальников из таблицы. Снимите галочку, чтобы исключить; укажите email вручную там, где не найдено.</p>
+
+      <div class="step-body" style="padding:16px 16px;">
+        {% if ad_autofetch_error %}
+        <div class="alert alert-warning py-2 mb-3" style="font-size:0.82rem;">
+          <strong>Не удалось подключиться к AD:</strong> {{ ad_autofetch_error }}.
+          Укажите адреса вручную ниже или повторите загрузку.
+        </div>
+        {% endif %}
+
+        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+          <span class="meta-pill">
+            <span class="meta-pill-label">AD</span>
+            <strong>{{ ad_server or '—' }}</strong>
+          </span>
+          <span class="meta-pill" id="rcpt-count">
+            <span class="meta-pill-label">Получатели</span>
+            <strong>0</strong>
+          </span>
+          <div style="flex:1;"></div>
+          <form method="post" action="{{ url_for('fetch_recipients') }}" style="margin:0;">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">
+              ↻ {% if recipients_meta %}Обновить{% else %}Загрузить{% endif %} из AD
+            </button>
+          </form>
+        </div>
+
+        <div id="rcpt-list" style="border:1px solid var(--corp-border);">
+          <div class="rcpt-row header">
+            <div class="chk"></div>
+            <div>Подразделение</div>
+            <div>Начальник</div>
+            <div>Email</div>
+            <div>Источник</div>
+          </div>
+          {% if recipients_meta %}
+            {% for r in recipients_meta %}
+            <div class="rcpt-row" data-idx="{{ loop.index0 }}" data-enabled="{{ 'true' if r.enabled else 'false' }}">
+              <div class="chk">
+                <input class="form-check-input rcpt-enabled" type="checkbox"
+                       {% if r.enabled %}checked{% endif %}
+                       {% if not r.email %}disabled{% endif %}>
+              </div>
+              <div>{{ r.dept }}</div>
+              <div class="dept-name">{{ r.lead or '—' }}</div>
+              <div>
+                {% if r.status == 'missing' %}
+                  <input type="email" class="form-control form-control-sm font-monospace rcpt-email"
+                         placeholder="укажите email" value="{{ r.email or '' }}">
+                {% else %}
+                  <input type="email" class="form-control form-control-sm font-monospace rcpt-email"
+                         value="{{ r.email or '' }}">
+                {% endif %}
+              </div>
+              <div>
+                {% if r.status == 'ok' %}<span class="ad-tag"><span class="dot"></span> AD</span>
+                {% elif r.status == 'manual' %}<span class="ad-tag"><span class="dot warn"></span> вручную</span>
+                {% else %}<span class="ad-tag"><span class="dot err"></span> не найден</span>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div style="padding:24px;text-align:center;color:var(--corp-muted);font-size:0.85rem;">
+              {% if pivot is none %}
+                Сначала загрузите Excel.
+              {% else %}
+                Нажмите «Загрузить из AD» или повторите шаг 1.
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="step-nav">
+        <button type="button" class="btn btn-outline-secondary" data-go="2">← Назад</button>
+        <button type="button" class="btn btn-primary" id="btn-to-preview" data-go="4">
+          Далее: предпросмотр →
+        </button>
+      </div>
+    </section>
+
+    {# ───── Step 4: Preview ───── #}
+    <section class="wizard-step" data-step="4">
+      <div class="step-head">
+        <span class="step-badge">4</span>
+        <h2 class="step-title">Проверьте письмо</h2>
+      </div>
+      <p class="step-help">Одно письмо уйдёт всем получателям. Отредактируйте тему и шаблон при необходимости.</p>
+
+      <div class="step-body" style="padding:0;">
+        <ul class="nav nav-tabs" style="font-size:0.82rem;padding:8px 14px 0;border-bottom:1px solid var(--corp-border);" id="preview-tabs">
+          <li class="nav-item">
+            <button class="nav-link active" data-tab="preview" type="button">Предпросмотр</button>
           </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-template-btn" data-bs-toggle="tab"
-                    data-bs-target="#tab-template" type="button" role="tab">Шаблон письма</button>
+          <li class="nav-item">
+            <button class="nav-link" data-tab="template" type="button">Шаблон</button>
           </li>
         </ul>
 
         <div class="tab-content">
-
-          {# ── Вкладка: Предпросмотр ── #}
-          <div class="tab-pane fade show active" id="tab-preview" role="tabpanel">
-
-            {# Метаданные письма — редактируемые поля #}
-            <div id="preview-meta" class="px-3 py-2 border-bottom bg-light" style="font-size:0.8rem;display:none;">
-              <table class="table table-sm table-borderless mb-0" style="font-size:inherit;">
-                <tbody>
-                  <tr>
-                    <th style="width:80px;white-space:nowrap;">От кого</th>
-                    <td><input type="email" id="pm-from" class="form-control form-control-sm" readonly></td>
-                  </tr>
-                  <tr>
-                    <th>Кому</th>
-                    <td>
-                      <textarea id="pm-to" class="form-control form-control-sm font-monospace" rows="3"
-                                placeholder="один адрес на строку или через запятую"></textarea>
-                      <div class="form-text">Каждый адрес на отдельной строке или через запятую.</div>
-                    </td>
-                  </tr>
-                  <tr>
-                    <th>Тема</th>
-                    <td><input type="text" id="pm-subject" class="form-control form-control-sm"></td>
-                  </tr>
-                </tbody>
-              </table>
+          {# Preview tab #}
+          <div class="tab-pane active" data-tab="preview" style="padding:14px 16px;">
+            <div class="email-preview-meta">
+              <div class="row-m">
+                <label class="form-label">От кого</label>
+                <input type="email" class="form-control form-control-sm font-monospace" id="pm-from" readonly>
+              </div>
+              <div class="row-m">
+                <label class="form-label">Кому</label>
+                <div style="font-family:ui-monospace,monospace;font-size:0.78rem;" id="pm-to-summary">—</div>
+              </div>
+              <div class="row-m">
+                <label class="form-label">Тема</label>
+                <input type="text" class="form-control form-control-sm" id="pm-subject">
+              </div>
             </div>
-
-            {# Спиннер / ошибка / результат отправки #}
-            <div id="preview-loading" class="text-center py-5">
-              <div class="spinner-border text-primary" role="status"></div>
-              <p class="mt-2 text-muted small">Загрузка предпросмотра…</p>
+            <div id="preview-loading" class="text-center py-4" style="display:none;">
+              <span class="spinner-sm" style="width:22px;height:22px;"></span>
+              <div class="text-muted small mt-2">Загрузка предпросмотра…</div>
             </div>
             <div id="preview-error" class="alert alert-danger m-3" style="display:none;"></div>
-            <div id="preview-send-result" class="m-3" style="display:none;"></div>
-
-            {# iframe с телом письма #}
-            <iframe id="preview-frame"
-                    sandbox="allow-same-origin"
-                    style="display:none;width:100%;height:520px;border:none;"></iframe>
+            <iframe id="preview-frame" class="email-preview-frame" sandbox="allow-same-origin"></iframe>
           </div>
 
-          {# ── Вкладка: Шаблон письма ── #}
-          <div class="tab-pane fade" id="tab-template" role="tabpanel">
-            <div class="px-3 py-3" style="font-size:0.82rem;">
-              <p class="text-muted mb-3">
-                Отредактируйте текст письма. В поле «Вступление» можно использовать
-                <code>{period_str}</code> — будет заменено на период из Excel.
-              </p>
-
-              <div class="mb-3">
-                <label class="form-label fw-semibold mb-1">Приветствие</label>
-                <input type="text" id="tpl-greeting" class="form-control form-control-sm"
-                       placeholder="Добрый день,">
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label fw-semibold mb-1">Вступление</label>
-                <textarea id="tpl-intro" class="form-control form-control-sm" rows="3"
-                          placeholder="Направляю еженедельный отчёт…"></textarea>
-              </div>
-
-              <div class="mb-3">
-                <label class="form-label fw-semibold mb-1">Подпись / нижний колонтитул</label>
-                <input type="text" id="tpl-footer" class="form-control form-control-sm"
-                       placeholder="Письмо сформировано автоматически…">
-              </div>
-
-              <div class="d-flex gap-2">
-                <button type="button" id="btn-tpl-save" class="btn btn-sm btn-primary">
-                  Сохранить и обновить предпросмотр
-                </button>
-                <button type="button" id="btn-tpl-reset" class="btn btn-sm btn-outline-secondary">
-                  Сбросить к исходному
-                </button>
-              </div>
-              <div id="tpl-save-result" class="mt-2" style="display:none;"></div>
+          {# Template tab #}
+          <div class="tab-pane" data-tab="template" style="padding:16px 18px;max-width:640px;display:none;">
+            <p style="font-size:0.82rem;color:var(--corp-muted);">
+              Во вступлении доступна подстановка <code>{period_str}</code>.
+            </p>
+            <div class="mb-3">
+              <label class="form-label">Приветствие</label>
+              <input type="text" class="form-control form-control-sm" id="tpl-greeting">
             </div>
+            <div class="mb-3">
+              <label class="form-label">Вступление</label>
+              <textarea class="form-control form-control-sm" rows="3" id="tpl-intro"></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Подпись</label>
+              <input type="text" class="form-control form-control-sm" id="tpl-footer">
+            </div>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-primary" id="btn-tpl-save">Сохранить и посмотреть</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-tpl-reset">Сбросить</button>
+            </div>
+            <div id="tpl-save-result" class="mt-2" style="display:none;"></div>
           </div>
-
-        </div>{# /tab-content #}
+        </div>
       </div>
 
-      <div class="modal-footer py-2">
-        <small class="text-muted me-auto">Поля «Кому» и «Тема» можно отредактировать перед отправкой.</small>
-        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-        <button type="button" id="btn-send-from-preview" class="btn btn-sm btn-success" style="display:none;">
-          Отправить
-        </button>
+      <div class="step-nav">
+        <button type="button" class="btn btn-outline-secondary" data-go="3">← Назад</button>
+        <button type="button" class="btn btn-primary" data-go="5">Далее: отправка →</button>
+      </div>
+    </section>
+
+    {# ───── Step 5: Send ───── #}
+    <section class="wizard-step" data-step="5">
+      <div class="step-head">
+        <span class="step-badge">5</span>
+        <h2 class="step-title">Отправить рассылку</h2>
+      </div>
+      <p class="step-help">Одно письмо уйдёт всем получателям через корпоративный SMTP.</p>
+
+      <div class="step-body">
+        <div class="send-stats">
+          <div class="stat-card">
+            <div class="stat-num" id="stat-letter">0</div>
+            <div class="stat-lbl">Письмо</div>
+          </div>
+          <div class="stat-card ok">
+            <div class="stat-num" id="stat-ok">0</div>
+            <div class="stat-lbl">Доставлено получателям</div>
+          </div>
+          <div class="stat-card fail">
+            <div class="stat-num" id="stat-fail">0</div>
+            <div class="stat-lbl">Отклонено</div>
+          </div>
+        </div>
+
+        <div id="send-intro" style="padding:22px 0 8px;text-align:center;">
+          <button type="button" class="btn btn-success" id="btn-send"
+                  style="min-width:260px;padding:10px 20px;font-size:0.95rem;">
+            ✉ Отправить письмо · <span id="btn-send-count">0</span> получателям
+          </button>
+          <div style="margin-top:10px;font-size:0.78rem;color:var(--corp-muted);">
+            Через SMTP · от {{ session.get('ad_user', '') }}
+          </div>
+        </div>
+
+        <div id="send-progress" style="display:none;margin:6px 0 14px;">
+          <div class="progress" style="height:6px;border-radius:0;">
+            <div class="progress-bar" id="send-bar" style="width:0;background:var(--corp-blue);"></div>
+          </div>
+          <div style="font-size:0.78rem;color:var(--corp-muted);margin-top:6px;" id="send-progress-text">—</div>
+        </div>
+
+        <div class="send-log" id="send-log" style="display:none;"></div>
+
+        <div id="send-result" style="margin-top:14px;display:none;"></div>
       </div>
 
-    </div>
-  </div>
+      <div class="step-nav">
+        <button type="button" class="btn btn-outline-secondary" data-go="4" id="btn-send-back">← Назад</button>
+        <span id="btn-send-done" style="display:none;">
+          <a href="{{ url_for('dashboard') }}" class="btn btn-primary">Новая рассылка</a>
+        </span>
+      </div>
+    </section>
+
+  </main>
 </div>
+
+{# Initial state for JS #}
+<script type="application/json" id="initial-state">
+{{ initial_state | tojson }}
+</script>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  'use strict';
 
-  // ── Сворачивание/разворачивание строк Управления ──────────────────────────
-  document.querySelectorAll('.row-group').forEach(function (groupRow) {
-    groupRow.addEventListener('click', function () {
-      var group = this.dataset.group;
-      var collapsed = this.classList.toggle('collapsed');
-      document.querySelectorAll('.row-dept[data-group="' + group + '"]').forEach(function (r) {
-        r.style.display = collapsed ? 'none' : '';
-      });
+  // ── Initial state ──
+  var initial = JSON.parse(document.getElementById('initial-state').textContent);
+  var URLS = initial.urls;
+  var FROM_ADDR = initial.from_addr;
+
+  // ── Upload: drag, label, enable submit on file select ──
+  var dropZone = document.getElementById('drop-zone');
+  var fileInput = document.getElementById('excel_file');
+  var uploadSubmit = document.getElementById('upload-submit');
+  if (dropZone && fileInput) {
+    ['dragover','dragenter'].forEach(function(ev){
+      dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.add('dragging'); });
     });
-  });
-
-  // ── Фильтр по Управлению ──────────────────────────────────────────────────
-  var filter = document.getElementById('group-filter');
-  if (!filter) return;
-
-  filter.addEventListener('change', function () {
-    var val = this.value;
-    document.querySelectorAll('#pivot-table tbody tr').forEach(function (row) {
-      var isTotal = row.classList.contains('row-total');
-      if (isTotal) { row.style.display = ''; return; }
-
-      var group = row.dataset.group || '';
-
-      if (!val) {
-        // Показать всё; восстановить состояние collapsed для dept-строк
-        row.style.display = '';
-      } else if (row.classList.contains('row-group')) {
-        row.style.display = (group === val) ? '' : 'none';
-      } else {
-        // dept-строка: показывать только если совпадает управление
-        var parentGroupRow = document.querySelector('.row-group[data-group="' + group + '"]');
-        var isCollapsed = parentGroupRow && parentGroupRow.classList.contains('collapsed');
-        row.style.display = (group === val && !isCollapsed) ? '' : 'none';
+    ['dragleave','drop'].forEach(function(ev){
+      dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.remove('dragging'); });
+    });
+    dropZone.addEventListener('drop', function(e){
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
+        fileInput.files = e.dataTransfer.files;
+        uploadSubmit.disabled = false;
+        document.getElementById('upload-form').submit();
       }
     });
+    fileInput.addEventListener('change', function(){
+      if (fileInput.files && fileInput.files.length){
+        uploadSubmit.disabled = false;
+        // Auto-submit for zero-click flow
+        document.getElementById('upload-form').submit();
+      }
+    });
+  }
+
+  // ── Step switching ──
+  var sections = document.querySelectorAll('.wizard-step');
+  var stepItems = document.querySelectorAll('#step-list .step-item');
+  var doneSet = new Set(initial.completed_steps || []);
+
+  function hasData(step){
+    if (step === 1) return true;                         // always accessible
+    if (step === 2) return initial.has_pivot;
+    if (step === 3) return initial.has_pivot;
+    if (step === 4) return initial.has_pivot && initial.has_recipients;
+    if (step === 5) return initial.has_pivot && initial.has_recipients;
+    return false;
+  }
+
+  function goto(step){
+    sections.forEach(function(s){
+      s.classList.toggle('active', Number(s.dataset.step) === step);
+    });
+    stepItems.forEach(function(el){
+      var n = Number(el.dataset.step);
+      el.classList.toggle('active', n === step);
+      el.classList.toggle('done', doneSet.has(n) && n !== step);
+      el.classList.toggle('disabled', !hasData(n));
+      // circle: show check for done, else number
+      var circle = el.querySelector('.step-circle');
+      if (doneSet.has(n) && n !== step) {
+        circle.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      } else {
+        circle.textContent = n;
+      }
+    });
+    // Trigger step-specific load
+    if (step === 4) loadPreview();
+    if (step === 5) updateSendCount();
+    window.scrollTo(0, 0);
+  }
+
+  stepItems.forEach(function(el){
+    el.addEventListener('click', function(){
+      var n = Number(el.dataset.step);
+      if (hasData(n)) goto(n);
+    });
   });
 
-})();
+  document.querySelectorAll('[data-go]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var n = Number(btn.dataset.go);
+      // Mark current as done if moving forward
+      var current = document.querySelector('.wizard-step.active');
+      if (current) {
+        var cur = Number(current.dataset.step);
+        if (n > cur) doneSet.add(cur);
+      }
+      goto(n);
+    });
+  });
 
-// ── Предпросмотр письма ───────────────────────────────────────────────────
-(function () {
-  var btn = document.getElementById('btn-preview');
-  if (!btn) return;
+  // ── Step 2: group filter & collapse ──
+  var filter = document.getElementById('group-filter');
+  if (filter) {
+    document.querySelectorAll('.row-group').forEach(function(groupRow){
+      groupRow.addEventListener('click', function(){
+        var group = this.dataset.group;
+        var collapsed = this.classList.toggle('collapsed');
+        document.querySelectorAll('.row-dept[data-group="'+group+'"]').forEach(function(r){
+          r.style.display = collapsed ? 'none' : '';
+        });
+      });
+    });
+    filter.addEventListener('change', function(){
+      var val = this.value;
+      document.querySelectorAll('#pivot-table tbody tr').forEach(function(row){
+        if (row.classList.contains('row-total')) { row.style.display=''; return; }
+        var group = row.dataset.group || '';
+        if (!val) { row.style.display = ''; }
+        else if (row.classList.contains('row-group')) { row.style.display = (group===val)?'':'none'; }
+        else {
+          var parent = document.querySelector('.row-group[data-group="'+group+'"]');
+          var collapsed = parent && parent.classList.contains('collapsed');
+          row.style.display = (group===val && !collapsed)?'':'none';
+        }
+      });
+    });
+  }
 
-  var loading    = document.getElementById('preview-loading');
-  var errDiv     = document.getElementById('preview-error');
-  var sendResult = document.getElementById('preview-send-result');
-  var meta       = document.getElementById('preview-meta');
-  var frame      = document.getElementById('preview-frame');
-  var sendBtn    = document.getElementById('btn-send-from-preview');
+  // ── Step 3: recipients bookkeeping ──
+  function activeRecipients(){
+    var out = [];
+    document.querySelectorAll('#rcpt-list .rcpt-row[data-idx]').forEach(function(row){
+      var enabled = row.querySelector('.rcpt-enabled');
+      var email = row.querySelector('.rcpt-email');
+      if (enabled && enabled.checked && email && email.value.trim()){
+        out.push(email.value.trim());
+      }
+    });
+    return out;
+  }
+  function refreshRcptCount(){
+    var n = activeRecipients().length;
+    var total = document.querySelectorAll('#rcpt-list .rcpt-row[data-idx]').length;
+    var pill = document.querySelector('#rcpt-count strong');
+    if (pill) pill.textContent = n + ' из ' + total;
+    var btn = document.getElementById('btn-to-preview');
+    if (btn) btn.disabled = n === 0;
+    updateSendCount();
+  }
+  document.querySelectorAll('#rcpt-list .rcpt-enabled, #rcpt-list .rcpt-email').forEach(function(el){
+    el.addEventListener('change', refreshRcptCount);
+    el.addEventListener('input', refreshRcptCount);
+  });
+  refreshRcptCount();
 
-  function loadPreview() {
-    loading.style.display    = '';
-    errDiv.style.display     = 'none';
-    sendResult.style.display = 'none';
-    meta.style.display       = 'none';
-    frame.style.display      = 'none';
-    frame.srcdoc             = '';
-    sendBtn.style.display    = 'none';
-    sendBtn.disabled         = false;
-    sendBtn.textContent      = 'Отправить';
+  // ── Step 4: preview ──
+  var previewLoaded = false;
+  var tplLoaded = false;
 
-    fetch('{{ url_for("preview") }}')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
+  function loadPreview(){
+    var loading = document.getElementById('preview-loading');
+    var errBox = document.getElementById('preview-error');
+    var frame = document.getElementById('preview-frame');
+    loading.style.display = '';
+    errBox.style.display = 'none';
+    frame.style.display = 'none';
+    frame.srcdoc = '';
+
+    fetch(URLS.preview)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
         loading.style.display = 'none';
-
-        if (data.error) {
-          errDiv.textContent   = data.error;
-          errDiv.style.display = '';
+        if (data.error){
+          errBox.textContent = data.error;
+          errBox.style.display = '';
           return;
         }
-
-        // Заполнить редактируемые поля
-        document.getElementById('pm-from').value    = data.from_addr || '';
-        document.getElementById('pm-to').value      = data.to.length ? data.to.join('\n') : '';
+        document.getElementById('pm-from').value = data.from_addr || FROM_ADDR || '';
         document.getElementById('pm-subject').value = data.subject || '';
-        meta.style.display    = '';
-        sendBtn.style.display = '';
+        // Кому — использовать текущий список из step 3
+        var active = activeRecipients();
+        var summary = active.slice(0,3).join(', ');
+        if (active.length > 3) summary += ' и ещё ' + (active.length - 3);
+        document.getElementById('pm-to-summary').textContent = summary || '—';
 
-        // Заполнить поля шаблона (если ещё не заполнены)
-        var tplGreeting = document.getElementById('tpl-greeting');
-        var tplIntro    = document.getElementById('tpl-intro');
-        var tplFooter   = document.getElementById('tpl-footer');
-        if (tplGreeting && !tplGreeting.dataset.loaded) {
-          tplGreeting.value        = data.tpl_greeting || '';
-          tplIntro.value           = data.tpl_intro    || '';
-          tplFooter.value          = data.tpl_footer   || '';
-          tplGreeting.dataset.loaded = '1';
+        if (!tplLoaded){
+          document.getElementById('tpl-greeting').value = data.tpl_greeting || '';
+          document.getElementById('tpl-intro').value = data.tpl_intro || '';
+          document.getElementById('tpl-footer').value = data.tpl_footer || '';
+          tplLoaded = true;
         }
 
-        // Вставить тело письма в iframe
-        frame.srcdoc        = data.body_html;
+        frame.srcdoc = data.body_html;
         frame.style.display = '';
+        previewLoaded = true;
       })
-      .catch(function (e) {
+      .catch(function(e){
         loading.style.display = 'none';
-        errDiv.textContent    = 'Ошибка запроса: ' + e;
-        errDiv.style.display  = '';
+        errBox.textContent = 'Ошибка запроса: ' + e;
+        errBox.style.display = '';
       });
   }
 
-  btn.addEventListener('click', function () {
-    var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('previewModal'));
-    // Переключиться на вкладку предпросмотра
-    var tabEl = document.getElementById('tab-preview-btn');
-    if (tabEl) bootstrap.Tab.getOrCreateInstance(tabEl).show();
-    loadPreview();
-    modal.show();
-  });
-
-  // ── Отправка из модалки ──────────────────────────────────────────────────
-  sendBtn.addEventListener('click', function () {
-    var subject    = document.getElementById('pm-subject').value.trim();
-    var toRaw      = document.getElementById('pm-to').value;
-    var recipients = toRaw.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
-
-    if (!recipients.length) {
-      errDiv.textContent   = 'Укажите хотя бы одного адресата.';
-      errDiv.style.display = '';
-      return;
-    }
-
-    sendBtn.disabled    = true;
-    sendBtn.textContent = 'Отправляю…';
-    errDiv.style.display     = 'none';
-    sendResult.style.display = 'none';
-
-    fetch('{{ url_for("send") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subject: subject, recipients: recipients }),
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        sendBtn.textContent = 'Отправить';
-        sendBtn.disabled    = false;
-
-        if (data.error) {
-          errDiv.textContent   = data.error;
-          errDiv.style.display = '';
-          return;
-        }
-
-        var ok = 0, fail = 0;
-        var rows = recipients.map(function (email) {
-          var status = data[email] || 'error: нет ответа';
-          if (status === 'ok') {
-            ok++;
-            return '<li class="list-group-item d-flex justify-content-between align-items-center py-1">' +
-              '<span class="font-monospace small">' + escHtml(email) + '</span>' +
-              '<span class="badge bg-success">&#10003; Отправлено</span></li>';
-          } else {
-            fail++;
-            return '<li class="list-group-item d-flex justify-content-between align-items-center py-1">' +
-              '<span class="font-monospace small">' + escHtml(email) + '</span>' +
-              '<span class="badge bg-danger" title="' + escHtml(status) + '">&#10007; Ошибка</span></li>';
-          }
-        });
-
-        var cls = fail === 0 ? 'success' : (ok === 0 ? 'danger' : 'warning');
-        sendResult.innerHTML =
-          '<div class="alert alert-' + cls + ' py-2 mb-2">' +
-            'Отправлено: <strong>' + ok + '</strong>' +
-            (fail > 0 ? ' &nbsp;|&nbsp; Ошибок: <strong>' + fail + '</strong>' : '') +
-          '</div>' +
-          '<ul class="list-group list-group-flush" style="font-size:0.8rem;">' + rows.join('') + '</ul>';
-        sendResult.style.display = '';
-      })
-      .catch(function (e) {
-        sendBtn.textContent  = 'Отправить';
-        sendBtn.disabled     = false;
-        errDiv.textContent   = 'Ошибка сети: ' + e;
-        errDiv.style.display = '';
+  // Preview tab switching
+  document.querySelectorAll('#preview-tabs [data-tab]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.dataset.tab;
+      document.querySelectorAll('#preview-tabs .nav-link').forEach(function(b){
+        b.classList.toggle('active', b.dataset.tab === key);
       });
+      document.querySelectorAll('.tab-pane[data-tab]').forEach(function(p){
+        p.style.display = p.dataset.tab === key ? '' : 'none';
+      });
+    });
   });
 
-  // ── Шаблон письма ────────────────────────────────────────────────────────
-  var btnTplSave  = document.getElementById('btn-tpl-save');
+  // Template save/reset
+  var btnTplSave = document.getElementById('btn-tpl-save');
   var btnTplReset = document.getElementById('btn-tpl-reset');
-  var tplResult   = document.getElementById('tpl-save-result');
-
-  if (btnTplSave) {
-    btnTplSave.addEventListener('click', function () {
+  var tplResult = document.getElementById('tpl-save-result');
+  if (btnTplSave){
+    btnTplSave.addEventListener('click', function(){
       var payload = {
         greeting: document.getElementById('tpl-greeting').value,
         intro:    document.getElementById('tpl-intro').value,
         footer:   document.getElementById('tpl-footer').value,
       };
-      tplResult.style.display = 'none';
       btnTplSave.disabled = true;
-
-      fetch('{{ url_for("save_email_template") }}', {
+      fetch(URLS.email_template, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {'Content-Type':'application/json'},
         body: JSON.stringify(payload),
       })
-        .then(function (r) { return r.json(); })
-        .then(function () {
-          btnTplSave.disabled = false;
-          tplResult.innerHTML = '<span class="text-success">&#10003; Сохранено. Обновляю предпросмотр…</span>';
-          tplResult.style.display = '';
-          // Переключиться на предпросмотр и перезагрузить
-          bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-preview-btn')).show();
-          loadPreview();
-        })
-        .catch(function (e) {
-          btnTplSave.disabled = false;
-          tplResult.innerHTML = '<span class="text-danger">Ошибка: ' + escHtml(String(e)) + '</span>';
-          tplResult.style.display = '';
-        });
+      .then(function(r){ return r.json(); })
+      .then(function(){
+        btnTplSave.disabled = false;
+        tplResult.innerHTML = '<span class="text-success">✓ Сохранено. Обновляю предпросмотр…</span>';
+        tplResult.style.display = '';
+        document.querySelector('#preview-tabs [data-tab="preview"]').click();
+        loadPreview();
+      });
+    });
+  }
+  if (btnTplReset){
+    btnTplReset.addEventListener('click', function(){
+      fetch(URLS.email_template, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({greeting:null, intro:null, footer:null}),
+      }).then(function(){
+        tplLoaded = false;
+        document.querySelector('#preview-tabs [data-tab="preview"]').click();
+        loadPreview();
+      });
     });
   }
 
-  if (btnTplReset) {
-    btnTplReset.addEventListener('click', function () {
-      fetch('{{ url_for("get_email_template") }}?_reset=1')
-        .then(function (r) { return r.json(); })
-        .then(function () {
-          // Отправить сброс на сервер (пустые поля = дефолт)
-          return fetch('{{ url_for("save_email_template") }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ greeting: null, intro: null, footer: null }),
-          });
-        })
-        .then(function (r) { return r.json(); })
-        .then(function () {
-          // Сбросить поля и перезагрузить предпросмотр
-          var tplGreeting = document.getElementById('tpl-greeting');
-          tplGreeting.dataset.loaded = '';
-          bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-preview-btn')).show();
-          loadPreview();
+  // ── Step 5: send ──
+  function updateSendCount(){
+    var n = activeRecipients().length;
+    var el = document.getElementById('btn-send-count');
+    if (el) el.textContent = n;
+    var btn = document.getElementById('btn-send');
+    if (btn) btn.disabled = n === 0;
+  }
+
+  var sendBtn = document.getElementById('btn-send');
+  if (sendBtn){
+    sendBtn.addEventListener('click', function(){
+      var recipients = activeRecipients();
+      if (!recipients.length) return;
+      var subject = document.getElementById('pm-subject').value.trim();
+
+      document.getElementById('send-intro').style.display = 'none';
+      document.getElementById('send-progress').style.display = '';
+      document.getElementById('send-log').style.display = '';
+      document.getElementById('btn-send-back').disabled = true;
+
+      var logEl = document.getElementById('send-log');
+      logEl.innerHTML = '<div class="send-log-row" style="background:#fafbfc;">'+
+        '<div><span class="spinner-sm"></span></div>'+
+        '<div><div style="font-size:0.82rem;">Отправка письма на '+ recipients.length +' получателей…</div></div>'+
+        '<div></div></div>';
+
+      var statLetter = document.getElementById('stat-letter');
+      var statOk = document.getElementById('stat-ok');
+      var statFail = document.getElementById('stat-fail');
+      statLetter.textContent = '1';
+
+      fetch(URLS.send, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({subject: subject, recipients: recipients}),
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.error){
+          logEl.innerHTML = '<div class="send-log-row"><div>✕</div><div style="color:var(--corp-red);">'+ escHtml(data.error) +'</div><div></div></div>';
+          return;
+        }
+        var ok = 0, fail = 0;
+        var rows = recipients.map(function(email){
+          var status = data[email] || 'error: нет ответа';
+          if (status === 'ok'){
+            ok++;
+            return '<div class="send-log-row">'+
+              '<div><span style="color:#166534;">✓</span></div>'+
+              '<div><div class="email">'+ escHtml(email) +'</div></div>'+
+              '<div><span class="badge bg-success">Доставлено</span></div></div>';
+          } else {
+            fail++;
+            return '<div class="send-log-row">'+
+              '<div><span style="color:var(--corp-red);">✕</span></div>'+
+              '<div><div class="email">'+ escHtml(email) +'</div>'+
+              '<div style="font-size:0.72rem;color:var(--corp-muted);">'+ escHtml(status) +'</div></div>'+
+              '<div><span class="badge bg-danger">Отклонено</span></div></div>';
+          }
         });
+        statOk.textContent = ok;
+        statFail.textContent = fail;
+        logEl.innerHTML = rows.join('');
+        document.getElementById('send-bar').style.width = '100%';
+        document.getElementById('send-progress-text').textContent =
+          'Завершено. Доставлено: ' + ok + (fail ? ', отклонено: ' + fail : '') + '.';
+
+        var cls = fail === 0 ? 'success' : (ok === 0 ? 'danger' : 'warning');
+        var msg = fail === 0
+          ? '✓ Письмо доставлено всем получателям.'
+          : '⚠ Доставлено с ошибками: ' + fail + ' из ' + recipients.length + ' получателей.';
+        var res = document.getElementById('send-result');
+        res.innerHTML = '<div class="alert alert-'+ cls +' py-2 mb-0">'+ msg +'</div>';
+        res.style.display = '';
+        document.getElementById('btn-send-back').disabled = false;
+        document.getElementById('btn-send-done').style.display = '';
+      })
+      .catch(function(e){
+        logEl.innerHTML = '<div class="send-log-row"><div>✕</div><div style="color:var(--corp-red);">Ошибка сети: '+ escHtml(String(e)) +'</div><div></div></div>';
+        document.getElementById('btn-send-back').disabled = false;
+      });
     });
   }
 
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-                    .replace(/"/g,'&quot;');
+  function escHtml(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+
+  // ── Initial step ──
+  goto(initial.initial_step || 1);
+
 })();
 </script>
 {% endblock %}
