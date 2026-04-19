@@ -38,3 +38,6 @@ AD_DEPARTMENT = get("AD_DEPARTMENT")
 AD_SEARCH_BY = get("AD_SEARCH_BY", "title")
 AD_TITLE_MASK = get("AD_TITLE_MASK", "*Lead*")   # маска для поиска по title
 AD_GROUP_DN = get("AD_GROUP_DN")                  # DN группы при AD_SEARCH_BY=group
+
+# Заглушка для локального тестирования без AD (AD_STUB=true)
+AD_STUB = get("AD_STUB", "false").lower() == "true"
