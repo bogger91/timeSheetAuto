@@ -466,21 +466,17 @@ def send():
 
     results = {}
     for email in recipients:
-        try:
-            mailer.send_smtp(
-                smtp_host=config.SMTP_HOST,
-                smtp_port=config.SMTP_PORT,
-                smtp_user=session.get("ad_user", ""),
-                smtp_password=session.get("ad_password", ""),
-                mail_from=session.get("ad_user", ""),
-                mail_to=email,
-                subject=subject,
-                html_body=body_html,
-                cc=cc,
-            )
-            results[email] = "ok"
-        except Exception as e:
-            results[email] = f"error: {e}"
+        results[email] = mailer.send_smtp(
+            smtp_host=config.SMTP_HOST,
+            smtp_port=config.SMTP_PORT,
+            smtp_user=session.get("ad_user", ""),
+            smtp_password=session.get("ad_password", ""),
+            mail_from=session.get("ad_user", ""),
+            mail_to=email,
+            subject=subject,
+            html_body=body_html,
+            cc=cc,
+        )
     return jsonify(results)
 
 
