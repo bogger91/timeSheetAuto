@@ -226,7 +226,9 @@
 
         <div id="rcpt-list" style="border:1px solid var(--corp-border);">
           <div class="rcpt-row header">
-            <div class="chk"></div>
+            <div class="chk">
+              <input class="form-check-input" type="checkbox" id="rcpt-select-all" title="Выбрать все / снять все">
+            </div>
             <div>Подразделение</div>
             <div>Начальник</div>
             <div>Email</div>
@@ -554,12 +556,39 @@
   }
   function refreshRcptCount(){
     var n = activeRecipients().length;
-    var total = document.querySelectorAll('#rcpt-list .rcpt-row[data-idx]').length;
+    var rows = document.querySelectorAll('#rcpt-list .rcpt-row[data-idx]');
+    var total = rows.length;
     var pill = document.querySelector('#rcpt-count strong');
     if (pill) pill.textContent = n + ' из ' + total;
     var btn = document.getElementById('btn-to-preview');
     if (btn) btn.disabled = n === 0;
+    // Sync select-all checkbox state
+    var selectAll = document.getElementById('rcpt-select-all');
+    if (selectAll && total > 0) {
+      var enabledCount = 0;
+      rows.forEach(function(row){
+        var cb = row.querySelector('.rcpt-enabled');
+        if (cb && !cb.disabled && cb.checked) enabledCount++;
+      });
+      var availCount = 0;
+      rows.forEach(function(row){
+        var cb = row.querySelector('.rcpt-enabled');
+        if (cb && !cb.disabled) availCount++;
+      });
+      selectAll.checked = availCount > 0 && enabledCount === availCount;
+      selectAll.indeterminate = enabledCount > 0 && enabledCount < availCount;
+    }
     updateSendCount();
+  }
+  // Select-all / deselect-all
+  var selectAllCb = document.getElementById('rcpt-select-all');
+  if (selectAllCb) {
+    selectAllCb.addEventListener('change', function(){
+      document.querySelectorAll('#rcpt-list .rcpt-row[data-idx] .rcpt-enabled').forEach(function(cb){
+        if (!cb.disabled) cb.checked = selectAllCb.checked;
+      });
+      refreshRcptCount();
+    });
   }
   document.querySelectorAll('#rcpt-list .rcpt-enabled, #rcpt-list .rcpt-email').forEach(function(el){
     el.addEventListener('change', refreshRcptCount);
