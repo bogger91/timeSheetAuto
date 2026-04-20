@@ -167,6 +167,8 @@ def send_smtp(smtp_host: str, smtp_port: int,
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     all_rcpt = [mail_to] + cc_list
+    log.debug("SMTP config: host=%r port=%r user=%r from=%r cc=%r",
+              smtp_host, smtp_port, smtp_user, mail_from, cc_list or None)
     use_ssl = (smtp_port == 465)
     log.debug("SMTP connect → %s:%s (%s)", smtp_host, smtp_port,
               "SMTPS/SSL" if use_ssl else "STARTTLS")
