@@ -167,16 +167,20 @@ def send_smtp(smtp_host: str, smtp_port: int,
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     all_rcpt = [mail_to] + cc_list
-    log.debug("SMTP connect → %s:%s", smtp_host, smtp_port)
+    use_ssl = (smtp_port == 465)
+    log.debug("SMTP connect → %s:%s (%s)", smtp_host, smtp_port,
+              "SMTPS/SSL" if use_ssl else "STARTTLS")
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
-            srv.set_debuglevel(1)          # весь SMTP-диалог в stderr/stdout сервера
+        ctx = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        with ctx(smtp_host, smtp_port, timeout=15) as srv:
+            srv.set_debuglevel(1)
             resp = srv.ehlo()
-            log.debug("EHLO response: %s %s", resp[0], resp[1].decode(errors="replace"))
-            srv.starttls()
-            log.debug("STARTTLS OK")
-            resp = srv.ehlo()
-            log.debug("EHLO (post-TLS): %s %s", resp[0], resp[1].decode(errors="replace"))
+            log.debug("EHLO: %s %s", resp[0], resp[1].decode(errors="replace"))
+            if not use_ssl:
+                srv.starttls()
+                log.debug("STARTTLS OK")
+                resp = srv.ehlo()
+                log.debug("EHLO (post-TLS): %s %s", resp[0], resp[1].decode(errors="replace"))
             srv.login(smtp_user, smtp_password)
             log.debug("LOGIN OK as %s", smtp_user)
             log.debug("SENDMAIL from=%s to=%s", mail_from, all_rcpt)
