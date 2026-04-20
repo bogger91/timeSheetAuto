@@ -7,11 +7,14 @@
 """
 import os
 import json
+import logging
 import smtplib
 import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import config
+
+log = logging.getLogger("timesheetauto.smtp")
 
 _TEMPLATE_FILE = os.path.join(os.path.dirname(__file__), "template.json")
 
@@ -164,13 +167,26 @@ def send_smtp(smtp_host: str, smtp_port: int,
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     all_rcpt = [mail_to] + cc_list
+    log.debug("SMTP connect → %s:%s", smtp_host, smtp_port)
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
-            srv.ehlo()
+            srv.set_debuglevel(1)          # весь SMTP-диалог в stderr/stdout сервера
+            resp = srv.ehlo()
+            log.debug("EHLO response: %s %s", resp[0], resp[1].decode(errors="replace"))
             srv.starttls()
-            srv.ehlo()
+            log.debug("STARTTLS OK")
+            resp = srv.ehlo()
+            log.debug("EHLO (post-TLS): %s %s", resp[0], resp[1].decode(errors="replace"))
             srv.login(smtp_user, smtp_password)
-            srv.sendmail(mail_from, all_rcpt, msg.as_string())
+            log.debug("LOGIN OK as %s", smtp_user)
+            log.debug("SENDMAIL from=%s to=%s", mail_from, all_rcpt)
+            refused = srv.sendmail(mail_from, all_rcpt, msg.as_string())
+            if refused:
+                log.warning("Отклонено сервером: %s", refused)
+            else:
+                log.debug("SENDMAIL accepted by server")
+        log.info("Письмо отправлено → %s (cc: %s)", mail_to, cc_list or "—")
         return "ok"
     except Exception as e:
+        log.error("SMTP error to %s: %s", mail_to, e, exc_info=True)
         return f"error: {e}"

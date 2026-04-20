@@ -17,6 +17,7 @@ import io
 import os
 import tempfile
 import json
+import logging
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, jsonify,
@@ -29,6 +30,12 @@ from parser import load_pivot, load_period, pivot_to_html
 import ad_fetcher
 import mailer
 
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler()],
+)
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
