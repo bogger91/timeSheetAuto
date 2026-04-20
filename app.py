@@ -466,11 +466,7 @@ def send():
 
     results = {}
     for email in recipients:
-        results[email] = mailer.send_smtp(
-            smtp_host=config.SMTP_HOST,
-            smtp_port=config.SMTP_PORT,
-            smtp_user=session.get("ad_user", ""),
-            smtp_password=session.get("ad_password", ""),
+        results[email] = mailer.send_outlook(
             mail_from=session.get("ad_user", ""),
             mail_to=email,
             subject=subject,

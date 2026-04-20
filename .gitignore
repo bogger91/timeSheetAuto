@@ -7,3 +7,5 @@ __pycache__/
 .env
 .DS_Store
 .playwright-mcp/
+timesheetauto.log
+test_report.xslx

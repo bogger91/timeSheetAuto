@@ -143,7 +143,34 @@ def send(table_html: str):
 
 
 # ---------------------------------------------------------------------------
-# SMTP — для Flask-версии (не требует Outlook)
+# Outlook COM — для Flask-версии на Windows
+# ---------------------------------------------------------------------------
+
+def send_outlook(mail_from: str, mail_to: str, subject: str,
+                 html_body: str, cc: str = "") -> str:
+    """
+    Отправляет одно письмо через Outlook COM (win32com).
+
+    Возвращает 'ok' или 'error: <текст ошибки>'.
+    """
+    try:
+        outlook = _get_outlook()
+        mail = outlook.CreateItem(0)  # olMailItem
+        mail.Subject = subject
+        mail.HTMLBody = html_body
+        mail.To = mail_to
+        if cc:
+            mail.CC = cc
+        mail.Send()
+        log.info("Письмо отправлено (Outlook) → %s", mail_to)
+        return "ok"
+    except Exception as e:
+        log.error("Outlook error to %s: %s", mail_to, e, exc_info=True)
+        return f"error: {e}"
+
+
+# ---------------------------------------------------------------------------
+# SMTP — запасной вариант (требует прямого доступа к SMTP-серверу)
 # ---------------------------------------------------------------------------
 
 def send_smtp(smtp_host: str, smtp_port: int,
