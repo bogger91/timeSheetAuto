@@ -247,7 +247,7 @@ def upload():
     # Auto-fetch recipients from AD
     try:
         teamleads = ad_fetcher.get_teamleads(
-            session.get("ad_user", ""), session.get("ad_password", "")
+            user=session.get("ad_user", ""), password=session.get("ad_password", "")
         )
         session["teamleads"] = teamleads
         session["recipients_meta"] = _build_recipients_meta(pivot_df, teamleads)
@@ -287,7 +287,7 @@ def fetch_recipients():
         return redirect(url_for("login"))
     try:
         teamleads = ad_fetcher.get_teamleads(
-            session.get("ad_user", ""), session.get("ad_password", "")
+            user=session.get("ad_user", ""), password=session.get("ad_password", "")
         )
         session["teamleads"] = teamleads
         pivot_df = _get_pivot_df()
