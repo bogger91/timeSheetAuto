@@ -43,3 +43,6 @@ AD_GROUP_DN = get("AD_GROUP_DN")                  # DN группы при AD_SE
 
 # Заглушка для локального тестирования без AD (AD_STUB=true)
 AD_STUB = get("AD_STUB", "false").lower() == "true"
+
+# Порог % списания: получатель снимается по умолчанию, если % >= этого значения
+EXCLUDE_PCT = float(get("EXCLUDE_PCT", "95"))

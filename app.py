@@ -85,13 +85,15 @@ def _build_recipients_meta(pivot_df, teamleads):
         if not dept_name or dept_name in seen:
             continue
         seen.add(dept_name)
+        pct = float(row.get("% списания") or 0)
+        above_threshold = pct >= config.EXCLUDE_PCT
         tl = leads_by_dept.get(dept_name.lower())
         if tl and tl.get("email"):
             meta.append({
                 "dept": dept_name,
                 "lead": tl.get("name") or "",
                 "email": tl.get("email"),
-                "enabled": True,
+                "enabled": not above_threshold,
                 "status": "ok",
             })
         elif tl:
