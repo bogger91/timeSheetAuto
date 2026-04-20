@@ -738,12 +738,17 @@
   }
 
   // ── Step 5: send ──
+  function activeCCList(){
+    var raw = (document.getElementById('cc-input') || {}).value || '';
+    return raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+
   function updateSendCount(){
-    var n = activeRecipients().length;
+    var n = activeRecipients().length + activeCCList().length;
     var el = document.getElementById('btn-send-count');
     if (el) el.textContent = n;
     var btn = document.getElementById('btn-send');
-    if (btn) btn.disabled = n === 0;
+    if (btn) btn.disabled = activeRecipients().length === 0;
   }
 
   var sendBtn = document.getElementById('btn-send');
@@ -751,6 +756,7 @@
     sendBtn.addEventListener('click', function(){
       var recipients = activeRecipients();
       if (!recipients.length) return;
+      var ccList = activeCCList();
       var subject = document.getElementById('pm-subject').value.trim();
 
       document.getElementById('send-intro').style.display = 'none';
@@ -759,9 +765,10 @@
       document.getElementById('btn-send-back').disabled = true;
 
       var logEl = document.getElementById('send-log');
+      var totalRcpt = recipients.length + ccList.length;
       logEl.innerHTML = '<div class="send-log-row" style="background:#fafbfc;">'+
         '<div><span class="spinner-sm"></span></div>'+
-        '<div><div style="font-size:0.82rem;">Отправка письма на '+ recipients.length +' получателей…</div></div>'+
+        '<div><div style="font-size:0.82rem;">Отправка письма на '+ recipients.length +' получателей'+ (ccList.length ? ' + '+ccList.length+' CC' : '') +'…</div></div>'+
         '<div></div></div>';
 
       var statLetter = document.getElementById('stat-letter');
@@ -798,12 +805,21 @@
               '<div><span class="badge bg-danger">Отклонено</span></div></div>';
           }
         });
-        statOk.textContent = ok;
+        // CC получают копию каждого письма — считаем успешными если хоть одно To прошло
+        var ccOk = ok > 0 ? ccList.length : 0;
+        ccList.forEach(function(email){
+          rows.push('<div class="send-log-row">'+
+            '<div><span style="color:'+(ccOk?'#166534':'var(--corp-red)')+';">'+(ccOk?'✓':'✕')+'</span></div>'+
+            '<div><div class="email">'+ escHtml(email) +'</div>'+
+            '<div style="font-size:0.72rem;color:var(--corp-muted);">CC</div></div>'+
+            '<div><span class="badge '+(ccOk?'bg-success':'bg-secondary')+'">Копия</span></div></div>');
+        });
+        statOk.textContent = ok + ccOk;
         statFail.textContent = fail;
         logEl.innerHTML = rows.join('');
         document.getElementById('send-bar').style.width = '100%';
         document.getElementById('send-progress-text').textContent =
-          'Завершено. Доставлено: ' + ok + (fail ? ', отклонено: ' + fail : '') + '.';
+          'Завершено. Доставлено: ' + (ok + ccOk) + (fail ? ', отклонено: ' + fail : '') + '.';
 
         var cls = fail === 0 ? 'success' : (ok === 0 ? 'danger' : 'warning');
         var msg = fail === 0
