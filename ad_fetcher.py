@@ -37,14 +37,9 @@ else:
         use_ldaps = server_url.lower().startswith("ldaps://")
 
         if use_ldaps:
-            # LDAPS: собственный контекст с отключённой проверкой сертификата.
-            # Нельзя передавать version=PROTOCOL_TLS_CLIENT напрямую в Tls —
-            # этот контекст включает check_hostname/CERT_REQUIRED и конфликтует
-            # с validate=CERT_NONE, из-за чего SSL handshake зависает.
-            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
-            tls = Tls(validate=ssl.CERT_NONE, ssl_context=ssl_ctx)
+            # validate=CERT_NONE достаточно: ldap3 сам выставляет check_hostname=False
+            # когда validate==CERT_NONE, без зависимости от версии ldap3.
+            tls = Tls(validate=ssl.CERT_NONE)
             srv = Server(server_url, use_ssl=True, tls=tls,
                          get_info=ALL, connect_timeout=10)
         else:
