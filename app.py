@@ -207,7 +207,7 @@ def dashboard():
             "email_template": url_for("email_template"),
             "send":           url_for("send"),
         },
-        "from_addr": getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+        "from_addr": session.get("ad_user", ""),
         "has_pivot": bool(has_pivot),
         "has_recipients": bool(has_recipients),
         "initial_step": initial_step,
@@ -376,7 +376,7 @@ def preview():
 
     return jsonify(
         subject=subject,
-        from_addr=getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+        from_addr=session.get("ad_user", ""),
         body_html=body_html,
         tpl_greeting=greeting,
         tpl_intro=intro,
@@ -465,7 +465,7 @@ def send():
                 smtp_port=config.SMTP_PORT,
                 smtp_user=session.get("ad_user", ""),
                 smtp_password=session.get("ad_password", ""),
-                mail_from=getattr(config, "SMTP_FROM", "") or session.get("ad_user", ""),
+                mail_from=session.get("ad_user", ""),
                 mail_to=email,
                 subject=subject,
                 html_body=body_html,
