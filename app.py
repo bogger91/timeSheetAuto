@@ -164,7 +164,15 @@ def login():
         if not user or not pwd:
             flash("Введите логин и пароль.", "danger")
             return render_template("login.html")
-        # AD auth is performed lazily when needed; here we just stash credentials.
+        # Проверяем учётные данные через пробный bind к AD.
+        # AD_STUB=true пропускает проверку для локального тестирования.
+        if not config.AD_STUB:
+            result = ad_fetcher.test_connection(
+                server=config.AD_SERVER, user=user, password=pwd
+            )
+            if result.startswith("Ошибка"):
+                flash(f"Неверный логин или пароль ({result})", "danger")
+                return render_template("login.html")
         session.clear()
         session["logged_in"] = True
         session["ad_user"] = user

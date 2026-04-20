@@ -12,6 +12,7 @@ import smtplib
 import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from markupsafe import escape
 import config
 
 log = logging.getLogger("timesheetauto.smtp")
@@ -79,7 +80,7 @@ def build_html_body(table_html: str, period: str | None = None,
     period_str = f" за период <b>{period}</b>" if period else f" по состоянию на <b>{today}</b>"
 
     def nl2br(text: str) -> str:
-        return text.replace("\r\n", "<br>").replace("\n", "<br>")
+        return str(escape(text)).replace("\r\n", "<br>").replace("\n", "<br>")
 
     greeting_text = nl2br(greeting if greeting is not None else DEFAULT_GREETING)
     intro_text = nl2br((intro if intro is not None else DEFAULT_INTRO).replace("{period_str}", period_str))
