@@ -37,9 +37,14 @@ else:
         use_ldaps = server_url.lower().startswith("ldaps://")
 
         if use_ldaps:
-            # LDAPS: TLS с отключённой проверкой сертификата (корпоративный самоподписанный)
-            tls = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT)
-            tls.check_hostname = False
+            # LDAPS: собственный контекст с отключённой проверкой сертификата.
+            # Нельзя передавать version=PROTOCOL_TLS_CLIENT напрямую в Tls —
+            # этот контекст включает check_hostname/CERT_REQUIRED и конфликтует
+            # с validate=CERT_NONE, из-за чего SSL handshake зависает.
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+            tls = Tls(validate=ssl.CERT_NONE, ssl_context=ssl_ctx)
             srv = Server(server_url, use_ssl=True, tls=tls,
                          get_info=ALL, connect_timeout=10)
         else:
@@ -149,6 +154,13 @@ else:
                     "\n\nСервер требует шифрования. Попробуйте:\n"
                     "  AD_SERVER=ldaps://ваш-dc.company.ru\n"
                     "  AD_USE_NTLM=false"
+                )
+            elif "timed out" in msg or "handshake" in msg:
+                hint = (
+                    "\n\nSSL handshake завис. Возможные причины:\n"
+                    "  1. Порт 636 (LDAPS) закрыт файрволом — проверьте доступность сервера.\n"
+                    "  2. AD_SERVER указывает на ldaps://, но сервер принимает только ldap:// + NTLM.\n"
+                    "     Попробуйте: AD_SERVER=ldap://ваш-dc.company.ru  AD_USE_NTLM=true"
                 )
             elif "md4" in msg or "unsupported hash" in msg:
                 hint = (
