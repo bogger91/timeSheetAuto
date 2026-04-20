@@ -14,11 +14,14 @@
 # Drop-in compatible with existing parser.py, ad_fetcher.py, mailer.py, config.py.
 
 import io
+import os
+import tempfile
 import json
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, jsonify,
 )
+from flask_session import Session
 import pandas as pd
 
 import config
@@ -30,6 +33,12 @@ import mailer
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB
+
+# Серверные сессии — pivot_json может быть >4KB, в cookie не влезает
+app.config["SESSION_TYPE"] = "filesystem"
+app.config["SESSION_FILE_DIR"] = os.path.join(tempfile.gettempdir(), "timesheetauto_sessions")
+app.config["SESSION_PERMANENT"] = False
+Session(app)
 
 
 # ───────────────────────── helpers ─────────────────────────
