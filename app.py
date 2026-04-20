@@ -224,6 +224,7 @@ def dashboard():
         recipients_meta=recipients_meta,
         ad_autofetch_error=session.get("ad_autofetch_error"),
         ad_server=getattr(config, "AD_SERVER", ""),
+        cc=mailer.load_template().get("cc", ""),
         initial_state=initial_state,
     )
 
@@ -394,6 +395,7 @@ def email_template():
             greeting=session.get("tpl_greeting") or tpl["greeting"],
             intro=session.get("tpl_intro")        or tpl["intro"],
             footer=session.get("tpl_footer")      or tpl["footer"],
+            cc=tpl["cc"],
         )
 
     data = request.get_json(silent=True) or {}
@@ -406,12 +408,14 @@ def email_template():
         if key in data:
             val = data[key]
             if val is None:
-                # Reset to default — remove from session and clear file key
                 session.pop(sess_key, None)
                 save_kwargs[key] = getattr(mailer, f"DEFAULT_{key.upper()}")
             else:
                 session[sess_key] = str(val)
                 save_kwargs[key] = str(val)
+    # CC сохраняется сразу в файл — персистентно без сессии
+    if "cc" in data:
+        save_kwargs["cc"] = (data["cc"] or "").strip()
     if save_kwargs:
         mailer.save_template(**save_kwargs)
     return jsonify(ok=True)
@@ -451,6 +455,8 @@ def send():
         footer=footer,
     )
 
+    cc = mailer.load_template().get("cc", "")
+
     results = {}
     for email in recipients:
         try:
@@ -463,6 +469,7 @@ def send():
                 mail_to=email,
                 subject=subject,
                 html_body=body_html,
+                cc=cc,
             )
             results[email] = "ok"
         except Exception as e:

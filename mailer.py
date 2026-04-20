@@ -27,12 +27,14 @@ def load_template() -> dict:
         "greeting": data.get("greeting", DEFAULT_GREETING),
         "intro":    data.get("intro",    DEFAULT_INTRO),
         "footer":   data.get("footer",   DEFAULT_FOOTER),
+        "cc":       data.get("cc",       ""),
     }
 
 
 def save_template(greeting: str | None = None,
                   intro: str | None = None,
-                  footer: str | None = None) -> None:
+                  footer: str | None = None,
+                  cc: str | None = None) -> None:
     """Сохраняет шаблон в template.json. None — не менять поле."""
     try:
         with open(_TEMPLATE_FILE, encoding="utf-8") as f:
@@ -45,6 +47,8 @@ def save_template(greeting: str | None = None,
         data["intro"] = intro
     if footer is not None:
         data["footer"] = footer
+    if cc is not None:
+        data["cc"] = cc
     with open(_TEMPLATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -139,37 +143,34 @@ def send(table_html: str):
 # SMTP — для Flask-версии (не требует Outlook)
 # ---------------------------------------------------------------------------
 
-def send_smtp(table_html: str, recipient: str,
-              smtp_host: str, smtp_port: int,
+def send_smtp(smtp_host: str, smtp_port: int,
               smtp_user: str, smtp_password: str,
-              from_addr: str, subject: str = None,
-              period: str | None = None,
-              greeting: str | None = None,
-              intro: str | None = None,
-              footer: str | None = None) -> str:
+              mail_from: str, mail_to: str,
+              subject: str, html_body: str,
+              cc: str = "") -> str:
     """
     Отправляет одно письмо через SMTP (STARTTLS).
 
+    cc — строка с адресами через запятую или пустая строка.
     Возвращает 'ok' или 'error: <текст ошибки>'.
     """
-    subj = subject or config.MAIL_SUBJECT
-
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = subj
-    msg["From"] = from_addr
-    msg["To"] = recipient
-    msg.attach(MIMEText(
-        build_html_body(table_html, period=period, greeting=greeting, intro=intro, footer=footer),
-        "html", "utf-8",
-    ))
+    msg["Subject"] = subject or config.MAIL_SUBJECT
+    msg["From"] = mail_from
+    msg["To"] = mail_to
+    cc_list = [a.strip() for a in cc.split(",") if a.strip()] if cc else []
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
+    all_rcpt = [mail_to] + cc_list
     try:
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as srv:
             srv.ehlo()
             srv.starttls()
             srv.ehlo()
             srv.login(smtp_user, smtp_password)
-            srv.sendmail(from_addr, [recipient], msg.as_string())
+            srv.sendmail(mail_from, all_rcpt, msg.as_string())
         return "ok"
     except Exception as e:
         return f"error: {e}"
