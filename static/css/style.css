@@ -376,13 +376,15 @@ body {
 
 /* Drop zone */
 .drop-zone {
+  display: block;
   border: 2px dashed var(--corp-border);
   border-radius: 4px;
-  padding: 44px 24px;
+  padding: 72px 24px;
   text-align: center;
   background: #fafbfc;
   transition: all 0.18s;
   cursor: pointer;
+  width: 100%;
 }
 .drop-zone:hover, .drop-zone.dragging {
   border-color: var(--corp-blue);
@@ -399,6 +401,15 @@ body {
   justify-content: center;
   color: var(--corp-blue);
 }
+.dz-spinner {
+  width: 44px; height: 44px;
+  margin: 0 auto;
+  border: 3px solid var(--corp-border);
+  border-top-color: var(--corp-blue);
+  border-radius: 50%;
+  animation: dz-spin 0.8s linear infinite;
+}
+@keyframes dz-spin { to { transform: rotate(360deg); } }
 
 /* Meta pills */
 .meta-pill {

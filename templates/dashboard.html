@@ -55,27 +55,32 @@
           <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data"
                 id="upload-form">
             <label class="drop-zone" id="drop-zone" for="excel_file">
-              <div class="drop-zone-icon">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"
-                        stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
+              {# idle state #}
+              <div id="dz-idle">
+                <div class="drop-zone-icon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14"
+                          stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+                <div style="font-size:0.95rem;font-weight:600;color:var(--corp-navy);">
+                  Перетащите файл или нажмите
+                </div>
+                <div style="font-size:0.8rem;color:var(--corp-muted);margin-top:4px;">
+                  .xlsx или .xls
+                </div>
               </div>
-              <div style="font-size:0.95rem;font-weight:600;color:var(--corp-navy);">
-                Перетащите файл или нажмите
-              </div>
-              <div style="font-size:0.8rem;color:var(--corp-muted);margin-top:4px;">
-                .xlsx или .xls
+              {# loading state #}
+              <div id="dz-loading" style="display:none;">
+                <div class="dz-spinner"></div>
+                <div style="font-size:0.9rem;font-weight:600;color:var(--corp-navy);margin-top:14px;">
+                  Обрабатываем файл…
+                </div>
               </div>
               <input type="file" name="excel_file" id="excel_file"
                      accept=".xlsx,.xls" style="display:none;" required>
             </label>
-            <div class="d-flex justify-content-end mt-3">
-              <button type="submit" class="btn btn-primary" id="upload-submit" disabled>
-                Загрузить
-              </button>
-            </div>
           </form>
         {% else %}
           <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -444,10 +449,19 @@
   var URLS = initial.urls;
   var FROM_ADDR = initial.from_addr;
 
-  // ── Upload: drag, label, enable submit on file select ──
+  // ── Upload: drag, label, loader, auto-submit ──
   var dropZone = document.getElementById('drop-zone');
   var fileInput = document.getElementById('excel_file');
-  var uploadSubmit = document.getElementById('upload-submit');
+  function showUploadLoader(){
+    document.getElementById('dz-idle').style.display = 'none';
+    document.getElementById('dz-loading').style.display = '';
+    dropZone.style.cursor = 'default';
+    dropZone.style.pointerEvents = 'none';
+  }
+  function submitUpload(){
+    showUploadLoader();
+    document.getElementById('upload-form').submit();
+  }
   if (dropZone && fileInput) {
     ['dragover','dragenter'].forEach(function(ev){
       dropZone.addEventListener(ev, function(e){ e.preventDefault(); dropZone.classList.add('dragging'); });
@@ -458,16 +472,11 @@
     dropZone.addEventListener('drop', function(e){
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){
         fileInput.files = e.dataTransfer.files;
-        uploadSubmit.disabled = false;
-        document.getElementById('upload-form').submit();
+        submitUpload();
       }
     });
     fileInput.addEventListener('change', function(){
-      if (fileInput.files && fileInput.files.length){
-        uploadSubmit.disabled = false;
-        // Auto-submit for zero-click flow
-        document.getElementById('upload-form').submit();
-      }
+      if (fileInput.files && fileInput.files.length) submitUpload();
     });
   }
 
