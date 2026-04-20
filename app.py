@@ -73,12 +73,9 @@ def _build_recipients_meta(pivot_df, teamleads):
     if pivot_df is None or pivot_df.empty:
         return meta
 
-    # Prefer "dept"-level rows if row_type exists; fall back to all non-total rows.
+    # Include both group (управления) and dept rows — exclude only the total row.
     if "row_type" in pivot_df.columns:
-        dept_rows = pivot_df[pivot_df["row_type"] == "dept"]
-        if dept_rows.empty:
-            # some pivots only have groups — use groups instead
-            dept_rows = pivot_df[pivot_df["row_type"] == "group"]
+        dept_rows = pivot_df[pivot_df["row_type"].isin(["group", "dept"])]
     else:
         dept_rows = pivot_df
 
