@@ -322,6 +322,10 @@
                 <div style="font-family:ui-monospace,monospace;font-size:0.78rem;" id="pm-to-summary">—</div>
               </div>
               <div class="row-m">
+                <label class="form-label">Копия</label>
+                <div style="font-family:ui-monospace,monospace;font-size:0.78rem;color:var(--corp-muted);" id="pm-cc-summary">—</div>
+              </div>
+              <div class="row-m">
                 <label class="form-label">Тема</label>
                 <input type="text" class="form-control form-control-sm" id="pm-subject">
               </div>
@@ -656,6 +660,10 @@
         var summary = active.slice(0,3).join(', ');
         if (active.length > 3) summary += ' и ещё ' + (active.length - 3);
         document.getElementById('pm-to-summary').textContent = summary || '—';
+
+        // CC — из поля шага 3
+        var ccVal = (document.getElementById('cc-input') || {}).value || data.cc || '';
+        document.getElementById('pm-cc-summary').textContent = ccVal.trim() || '—';
 
         if (!tplLoaded){
           document.getElementById('tpl-greeting').value = data.tpl_greeting || '';
