@@ -559,6 +559,12 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.78rem;
 }
+.send-err-detail {
+  font-size: 0.78rem;
+  color: var(--corp-red);
+  margin-top: 2px;
+  word-break: break-all;
+}
 
 .spinner-sm {
   width: 14px; height: 14px;

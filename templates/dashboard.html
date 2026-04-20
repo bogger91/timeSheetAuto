@@ -793,7 +793,7 @@
       .then(function(r){ return r.json(); })
       .then(function(data){
         if (data.error){
-          logEl.innerHTML = '<div class="send-log-row"><div>✕</div><div style="color:var(--corp-red);">'+ escHtml(data.error) +'</div><div></div></div>';
+          showSendError(logEl, 'Ошибка сервера: ' + data.error);
           return;
         }
         var ok = 0, fail = 0;
@@ -807,10 +807,13 @@
               '<div><span class="badge bg-success">Доставлено</span></div></div>';
           } else {
             fail++;
+            var errText = status.replace(/^error:\s*/i, '');
             return '<div class="send-log-row">'+
               '<div><span style="color:var(--corp-red);">✕</span></div>'+
-              '<div><div class="email">'+ escHtml(email) +'</div>'+
-              '<div style="font-size:0.72rem;color:var(--corp-muted);">'+ escHtml(status) +'</div></div>'+
+              '<div>'+
+                '<div class="email">'+ escHtml(email) +'</div>'+
+                '<div class="send-err-detail">'+ escHtml(errText) +'</div>'+
+              '</div>'+
               '<div><span class="badge bg-danger">Отклонено</span></div></div>';
           }
         });
@@ -841,10 +844,25 @@
         document.getElementById('btn-send-done').style.display = '';
       })
       .catch(function(e){
-        logEl.innerHTML = '<div class="send-log-row"><div>✕</div><div style="color:var(--corp-red);">Ошибка сети: '+ escHtml(String(e)) +'</div><div></div></div>';
-        document.getElementById('btn-send-back').disabled = false;
+        showSendError(logEl, 'Ошибка сети: ' + String(e));
       });
     });
+  }
+
+  function showSendError(logEl, msg){
+    var statFail = document.getElementById('stat-fail');
+    if (statFail) statFail.textContent = '!';
+    document.getElementById('send-bar').style.width = '100%';
+    document.getElementById('send-bar').style.background = 'var(--corp-red)';
+    document.getElementById('send-progress-text').textContent = 'Ошибка отправки.';
+    logEl.innerHTML = '<div class="send-log-row" style="background:#fff5f5;">'+
+      '<div><span style="color:var(--corp-red);font-size:1.1rem;">✕</span></div>'+
+      '<div style="color:var(--corp-red);font-weight:600;">'+ escHtml(msg) +'</div>'+
+      '<div></div></div>';
+    var res = document.getElementById('send-result');
+    res.innerHTML = '<div class="alert alert-danger py-2 mb-0">Отправка не удалась. Проверьте настройки SMTP и доступность сервера.</div>';
+    res.style.display = '';
+    document.getElementById('btn-send-back').disabled = false;
   }
 
   function escHtml(s){
